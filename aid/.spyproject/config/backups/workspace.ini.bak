@@ -1,0 +1,12 @@
+[workspace]
+restore_data_on_startup = True
+save_data_on_exit = True
+save_history = True
+save_non_project_files = False
+project_type = empty-project-type
+recent_files = ['train.py', '../README.txt', 'model/music_transformer.py', '../../../Models/MusicTransformer-Pytorch/model/loss.py', 'model/positional_encoding.py', 'model/relative_position_representation.py', 'dataset/groove.py', '../../../Models/MusicTransformer-Pytorch/utilities/constants.py', '../../../Models/MusicTransformer-Pytorch/generate.py', 'generate.py', '../../../Models/MusicTransformer-Pytorch/utilities/device.py', 'external/learning_rate_scheduling.py', 'external/midi_processor.py', '../../../Models/MusicTransformer-Pytorch/utilities/run_model.py', '../../../Models/MusicTransformer-Pytorch/third_party/midi_processor/README.md', '../../../Models/MusicTransformer-Pytorch/preprocess_midi.py', 'notes_tests_resources.py', '../../../../../../../Programs/anaconda3/envs/Analysis/lib/python3.7/site-packages/pretty_midi/instrument.py', '../../../../../../../Programs/anaconda3/envs/Analysis/lib/python3.7/site-packages/pretty_midi/pretty_midi.py']
+
+[main]
+version = 0.2.0
+recent_files = ['../../../Models/MusicTransformer-Pytorch/preprocess_midi.py', 'utils/midi_processor.py', '../processor.py', '../../../Models/MusicTransformer-Pytorch/third_party/midi_processor/processor.py', 'scripts/notes_tests_resources.py', 'utils/utils.py', '../../../../../../../Programs/anaconda3/envs/Analysis/lib/python3.7/site-packages/pretty_midi/instrument.py', '../../../../../../../Programs/anaconda3/envs/Analysis/lib/python3.7/site-packages/pretty_midi/pretty_midi.py']
+
