@@ -38,7 +38,7 @@ def generate(directory_output = './generate',
              max_sequence = 2048,   # maximal midi sequence
              
              file_model = None,
-             directory_models = '/home/ckirst/Media/Music/AImedia/MLMusic/Develop/AIDrummer/results/models',
+             directory_models = '/home/ckirst/Media/Music/AImedia/MLMusic/Code/aid/results/models',
              n_layers      = 6,     # layers in transformer
              n_heads       = 8,     # multi-head attention
              d_model       = 512,   # dimension of model

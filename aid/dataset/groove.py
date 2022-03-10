@@ -90,7 +90,7 @@ def download(directory = '/home/ckirst/Media/Music/AImedia/MLMusic/Data'):
     import shutil
     shutil.unpack_archive(target, directory);
     
-    data_directory = os.paht.join(directory, 'groove')
+    data_directory = os.path.join(directory, 'groove')
     
     return data_directory
 

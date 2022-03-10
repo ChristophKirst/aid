@@ -74,7 +74,7 @@ def train(
       
       ### files and dirs ###
       directory_input   = '/home/ckirst/Media/Music/AImedia/MLMusic/Data/groove_encoded',
-      directory_results = '/home/ckirst/Media/Music/AImedia/MLMusic/Develop/AIDrummer/results'
+      directory_results = '/home/ckirst/Media/Music/AImedia/MLMusic/Code/aid/results'
   ):
   """Traiin the music transformer."""  
   
