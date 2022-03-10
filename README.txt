@@ -1,2 +1,3 @@
- Project to create an AI drummer that performs with Poanist Jenny Q Chai
+# aid
 
+Artificial neuronal networks supporting music performance.
