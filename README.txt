@@ -1,3 +1,3 @@
 # aid
-Artificial neuronal networks supporting music performance
 
+Artificial neuronal networks supporting music performance.
