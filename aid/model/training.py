@@ -26,7 +26,6 @@ import aid.model.learning_rate_scheduling as lrs
 import aid.utils.midi_encoder as encoder
 
 
-
 def device():
   if torch.cuda.device_count() > 0:
     return torch.device("cuda")
@@ -41,6 +40,7 @@ def train(
       ### parameter ###
       max_sequence = 2048,   # maximal midi sequence
       batch_size   = 2,      # batch size
+      n_train_batches = None,# number of batches to use for training, None use all
       epochs       = 100,    # epochs 
       n_workers    = 1,      # threads
       
@@ -60,8 +60,11 @@ def train(
       
       loss_smoothing = None,
       
+      n_eval_train_samples = None,
+      n_eval_test_samples  = None,
+      
       ### control ###
-      save_weights = 10,
+      save_weights = 1,
       use_tensorboard = True,
       verbose   = 1,
       
@@ -71,7 +74,7 @@ def train(
       
       ### files and dirs ###
       directory_input   = '/home/ckirst/Media/Music/AImedia/MLMusic/Data/groove_encoded',
-      directory_results = '/home/ckirst/Desktop/aid_results'
+      directory_results = '/home/ckirst/Media/Music/AImedia/MLMusic/Develop/AIDrummer/results'
   ):
   """Traiin the music transformer."""  
   
@@ -116,13 +119,18 @@ def train(
   
   ### load previous training session ###
   start_epoch = -1;
-  if continue_weights is not None:
-    if continue_epoch is None:
-      print("Train: Need epoch number to continue training")
-      return
-    else:
-      model.load_state_dict(torch.load(continue_weights))
-      start_epoch = continue_epoch
+  if continue_epoch is not None:
+    if continue_weights == -1:
+         import glob
+         files = sorted(glob.glob(os.path.join(directory_models, "epoch_*.pickle")));
+         continue_weights = files[-1];
+         continue_epoch = int(continue_weights[-13:-7]);
+    elif continue_weights is None:
+         epoch_str = str(continue_epoch+1).zfill(6)
+         continue_weights = os.path.join(directory_models, "epoch_" + epoch_str + ".pickle")
+    print('Continuing from epoch %d, using model: %s' % (continue_epoch, continue_weights));
+    model.load_state_dict(torch.load(continue_weights))
+    start_epoch = continue_epoch
 
   ### learning rater ###
   if learning_rate is None:
@@ -136,10 +144,10 @@ def train(
 
 
   ### loss ###
-  loss_function_eval = torch.nn.CrossEntropyLoss(ignore_index=encoder.ENCODE_TOKEN_PAD)
+  loss_function_test = torch.nn.CrossEntropyLoss(ignore_index=encoder.ENCODE_TOKEN_PAD)
 
   if loss_smoothing is None:
-    loss_function_train = loss_function_eval
+    loss_function_train = loss_function_test
   else:
     loss_function_train = SmoothCrossEntropyLoss(loss_smoothing, encoder.ENCODE_SIZE, ignore_index=encoder.ENCODE_TOKEN_PAD)
 
@@ -154,10 +162,10 @@ def train(
     learning_rate_scheduler = None
 
   ### best evaluation accuracy ###
-  best_eval_acc        = 0.0
-  best_eval_acc_epoch  = -1
-  best_eval_loss       = float("inf")
-  best_eval_loss_epoch = -1
+  best_test_acc        = 0.0
+  best_test_acc_epoch  = -1
+  best_test_loss       = float("inf")
+  best_test_loss_epoch = -1
 
   ### results ###
   if not os.path.isfile(file_results):
@@ -176,7 +184,8 @@ def train(
       print("")
 
       # Train
-      train_epoch(epoch+1, model, loader_train, loss_function_train, optimizer, learning_rate_scheduler, verbose)
+      train_epoch(epoch+1, model, loader_train, loss_function_train, optimizer, learning_rate_scheduler, 
+                  n_train_batches=n_train_batches, verbose=verbose)
 
       print(separator)
       print("Evaluating:")
@@ -184,49 +193,51 @@ def train(
       print(separator)
       print("Baseline model evaluation (Epoch 0):")
 
-    # Eval
-    train_loss, train_acc = evaluate_model(model, loader_train, loss_function_train)
-    eval_loss,  eval_acc  = evaluate_model(model, loader_test,  loss_function_eval)
+    # Evaluation
+    print("evaluating on training data.")
+    train_loss, train_acc = evaluate_model(model, loader_train, loss_function_train, n_samples=n_eval_train_samples)
+    print("train loss:", train_loss)
+    print("train acc:" , train_acc)
     
-    learning_rate = lrs.get_lr(optimizer)
-
-    print("Epoch:", epoch+1)
-    print("Avg train loss:", train_loss)
-    print("Avg train acc:", train_acc)
-    print("Avg eval loss:", eval_loss)
-    print("Avg eval acc:", eval_acc)
+    
+    print("Evaluating on test data.")
+    test_loss,  test_acc  = evaluate_model(model, loader_test,  loss_function_test,  n_samples=n_eval_test_samples)
+    print("test loss:", test_loss)
+    print("test acc:",  test_acc)
     print(separator)
     print("")
 
+
+    learning_rate = lrs.get_lr(optimizer)
     new_best = False
 
-    if eval_acc > best_eval_acc:
-      best_eval_acc = eval_acc
-      best_eval_acc_epoch  = epoch+1
+    if test_acc > best_test_acc:
+      best_test_acc = test_acc
+      best_test_acc_epoch  = epoch+1
       torch.save(model.state_dict(), file_best_accuracy)
       new_best = True
 
-    if eval_loss < best_eval_loss:
-      best_eval_loss       = eval_loss
-      best_eval_loss_epoch = epoch+1
+    if test_loss < best_test_loss:
+      best_test_loss       = test_loss
+      best_test_loss_epoch = epoch+1
       torch.save(model.state_dict(), file_best_loss)
       new_best = True
 
     if new_best:
       with open(file_best_epochs, "w") as o_stream:
-        print("Best eval acc epoch:", best_eval_acc_epoch, file=o_stream)
-        print("Best eval acc:", best_eval_acc, file=o_stream)
+        print("Best test acc epoch:", best_test_acc_epoch, file=o_stream)
+        print("Best test acc:", best_test_acc, file=o_stream)
         print("")
-        print("Best eval loss epoch:", best_eval_loss_epoch, file=o_stream)
-        print("Best eval loss:", best_eval_loss, file=o_stream)
+        print("Best test loss epoch:", best_test_loss_epoch, file=o_stream)
+        print("Best test loss:", best_test_loss, file=o_stream)
 
 
     if use_tensorboard:
-      tensorboard_summary.add_scalar("Avg_CE_loss/train", train_loss, global_step=epoch+1)
-      tensorboard_summary.add_scalar("Avg_CE_loss/eval", eval_loss, global_step=epoch+1)
-      tensorboard_summary.add_scalar("Accuracy/train", train_acc, global_step=epoch+1)
-      tensorboard_summary.add_scalar("Accuracy/eval", eval_acc, global_step=epoch+1)
-      tensorboard_summary.add_scalar("Learn_rate/train", learning_rate, global_step=epoch+1)
+      tensorboard_summary.add_scalar("loss/train", train_loss, global_step=epoch+1)
+      tensorboard_summary.add_scalar("loss/test",  test_loss, global_step=epoch+1)
+      tensorboard_summary.add_scalar("accuracy/train", train_acc, global_step=epoch+1)
+      tensorboard_summary.add_scalar("accuracy/eval", test_acc, global_step=epoch+1)
+      tensorboard_summary.add_scalar("learning_rate/train", learning_rate, global_step=epoch+1)
       tensorboard_summary.flush()
 
     if (epoch+1) % save_weights == 0:
@@ -236,7 +247,7 @@ def train(
 
     with open(file_results, "a", newline="") as o_stream:
       writer = csv.writer(o_stream)
-      writer.writerow([epoch+1, learning_rate, train_loss, train_acc, eval_loss, eval_acc])
+      writer.writerow([epoch+1, learning_rate, train_loss, train_acc, test_loss, test_acc])
 
   if use_tensorboard:
     tensorboard_summary.flush()
@@ -249,10 +260,16 @@ def train(
 
 import time
 
-def train_epoch(epoch, model, dataloader, loss, optimizer, learning_rate_scheduler=None, verbose=1):
+def train_epoch(epoch, model, dataloader, loss, optimizer, learning_rate_scheduler=None, n_train_batches = None, verbose=1):
     out = -1
     model.train()
+    if n_train_batches is None:
+        n_train_batches = len(dataloader);
+    
     for batch_num, batch in enumerate(dataloader):
+      if batch_num >= n_train_batches:
+          break;
+        
       time_before = time.time()
 
       optimizer.zero_grad()
@@ -288,17 +305,28 @@ def train_epoch(epoch, model, dataloader, loss, optimizer, learning_rate_schedul
     return
   
 
-def evaluate_model(model, dataloader, loss):
+def evaluate_model(model, dataloader, loss, n_samples = None, verbose = False):
 
     model.eval()
 
     avg_acc     = -1
     avg_loss    = -1
+    
+    n_test      = len(dataloader)
+    if n_samples is None:
+        n_samples = n_test;
+    
+    sum_loss   = 0.0
+    sum_acc    = 0.0
+    n = 0;
     with torch.set_grad_enabled(False):
-        n_test      = len(dataloader)
-        sum_loss   = 0.0
-        sum_acc    = 0.0
         for batch in dataloader:
+            if n >= n_samples:
+                break;
+            n += 1;
+            if verbose:
+                print('evaluating  batch %d / %d' % (n, n_samples));
+            
             x   = batch[0].to(device())
             tgt = batch[1].to(device())
 

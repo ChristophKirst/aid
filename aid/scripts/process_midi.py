@@ -12,9 +12,18 @@ import os
 import aid.dataset.groove as groove
 import aid.utils.midi_encoder as encoder
 
+
+prefix = '/global'
+prefix = '';
+
+#%% download data set
+
+directory_midi = groove.download(directory= prefix + '/home/ckirst/Media/Music/AImedia/MLMusic/Data');
+
+
 #%%
-directory_midi   =  '/home/ckirst/Media/Music/AImedia/MLMusic/Data/groove'
-directory_encode =  '/home/ckirst/Media/Music/AImedia/MLMusic/Data/groove_encoded'
+directory_midi   =  prefix + '/home/ckirst/Media/Music/AImedia/MLMusic/Data/groove'
+directory_encode =  prefix + '/home/ckirst/Media/Music/AImedia/MLMusic/Data/groove_encoded'
 
 #%% Test encoding
 

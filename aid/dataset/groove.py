@@ -56,6 +56,45 @@ class GrooveDataset(Dataset):
         return x, tgt
 
 
+# download data set
+
+
+
+
+
+
+def download(directory = '/home/ckirst/Media/Music/AImedia/MLMusic/Data'):
+    import progressbar
+    import urllib
+    
+    class ProgressBar():
+        def __init__(self):
+            self.pbar = None
+    
+        def __call__(self, block_num, block_size, total_size):
+            if not self.pbar:
+                self.pbar=progressbar.ProgressBar(maxval=total_size)
+                self.pbar.start()
+    
+            downloaded = block_num * block_size
+            if downloaded < total_size:
+                self.pbar.update(downloaded)
+            else:
+                self.pbar.finish()
+    
+    os.makedirs(directory,    exist_ok=True)
+    
+    target = os.path.join(directory, 'groove-v1.0.0-midionly.zip');    
+    urllib.request.urlretrieve('https://storage.googleapis.com/magentadata/datasets/groove/groove-v1.0.0-midionly.zip', target, ProgressBar())
+
+    import shutil
+    shutil.unpack_archive(target, directory);
+    
+    data_directory = os.paht.join(directory, 'groove')
+    
+    return data_directory
+
+
 # process_midi
 def generate_input_target(midi_code, max_seq, random_seq):
     """raw midi to input and target"""
