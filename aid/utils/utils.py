@@ -27,6 +27,8 @@ import music21 as m21
 
 from IPython.display import display, Audio, Image
 
+import aid.utils.midi_encoder as encoder
+
 
 
 def midi_to_waveform(midi, sf2_path = '/usr/share/sounds/sf2/FluidR3_GM.sf2'):
@@ -103,3 +105,23 @@ def plot_midi(midi, ptype = 'musescore', measures = all, **kwargs):
         return m.plot(**kwargs)
     
     
+def play_code(code, **kwargs):
+    midi = encoder.decode_midi(code);
+    play_midi(midi, **kwargs);
+
+    
+def plot_code(code, **kwargs):
+    midi = encoder.decode_midi(code);
+    plot_midi(midi, **kwargs);
+    
+    
+def play(data, **kwargs):
+    if not isinstance(data, pm.PrettyMIDI):
+        data = encoder.decode_midi(data);
+    play_midi(data, **kwargs);
+
+
+def plot(data, **kwargs):
+    if not isinstance(data, pm.PrettyMIDI):
+        data = encoder.decode_midi(data);
+    plot_midi(data, **kwargs);        

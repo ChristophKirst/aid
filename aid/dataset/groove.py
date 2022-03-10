@@ -57,12 +57,6 @@ class GrooveDataset(Dataset):
 
 
 # download data set
-
-
-
-
-
-
 def download(directory = '/home/ckirst/Media/Music/AImedia/MLMusic/Data'):
     import progressbar
     import urllib

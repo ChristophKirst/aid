@@ -312,9 +312,8 @@ def evaluate_model(model, dataloader, loss, n_samples = None, verbose = False):
     avg_acc     = -1
     avg_loss    = -1
     
-    n_test      = len(dataloader)
     if n_samples is None:
-        n_samples = n_test;
+        n_samples = len(dataloader);
     
     sum_loss   = 0.0
     sum_acc    = 0.0
@@ -341,8 +340,8 @@ def evaluate_model(model, dataloader, loss, n_samples = None, verbose = False):
 
             sum_loss += float(out)
 
-        avg_loss    = sum_loss / n_test
-        avg_acc     = sum_acc / n_test
+        avg_loss    = sum_loss / n
+        avg_acc     = sum_acc / n
 
     return avg_loss, avg_acc
 
