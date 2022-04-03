@@ -125,7 +125,8 @@ def train_epoch(epoch, model, data, loss, optimizer, n_batches = None, verbose =
             time_batch_total = time_batch_end - time_batch_start;
               
             if separator: print(separator)
-            print('training: epoch %d  batch %d/%d (%d) batch_size %d' % (epoch+1, b+1, n_batches, len(data), batch.batch_size()))
+            print('training: epoch %d  batch %d/%d (%d)' % (epoch+1, b+1, n_batches, len(data)))
+            print('batch_size, sequence_length = %d, %d'%  (src.shape[0], src.shape[1]))
             print("lrate:    %r" % optimizer.rate())
             print("loss:     %r" % (float(out) / float(nrm)))
             print("time (s): %r" % time_batch_total)
