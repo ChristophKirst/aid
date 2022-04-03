@@ -497,7 +497,7 @@ def train(
         learn_train_loss = train_epoch(epoch, model, data_train, loss, optimizer, n_batches=n_train_batches, verbose=verbose)
         
         # Evaluation      
-        if n_evaluate_train_batches > 0: 
+        if n_evaluate_train_batches is None or n_evaluate_train_batches > 0: 
             if verbose:
                 if separator: print(separator)
                 print("Evaluation on training data epoch: %d/%d" % (epoch+1, epochs))
@@ -507,7 +507,7 @@ def train(
         else:
             eval_train_loss, eval_train_acc = float('inf'), 0.0
             
-        if n_evaluate_test_batches > 0: 
+        if n_evaluate_test_batches is None or n_evaluate_test_batches > 0: 
             if verbose:
                 if separator: print(separator)
                 print("Evaluation on test data epoch: %d/%d" % (epoch+1, epochs))

@@ -56,7 +56,7 @@ model, optimizer, loss = train(
       n_evaluate_train_batches  = 0,
       n_evaluate_test_batches   = None,
       
-      data_parameter = dict(batch_size=25, max_length=1024),
+      data_parameter = dict(batch_size=25, max_length=64),
       
       base_directory=directory_base,
       data_directory=directory_data,
