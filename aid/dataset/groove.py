@@ -7,6 +7,8 @@ Groove data set
 Interface to the Groove MIDI Dataset
 https://magenta.tensorflow.org/datasets/groove
 """
+__author__    = 'Christoph Kirst <christoph.kirst.ck@gmail.com>'
+__copyright__ = 'Copyright © 2022 by Christoph Kirst'
 
 import os
 import natsort

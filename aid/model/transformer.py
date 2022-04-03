@@ -19,7 +19,8 @@ https://arxiv.org/abs/1803.02155
 referenc for training implementations
 https://nlp.seas.harvard.edu/2018/04/03/attention.html
 """
-__author__ = "Christoph Kirst"
+__author__    = 'Christoph Kirst <christoph.kirst.ck@gmail.com>'
+__copyright__ = 'Copyright © 2022 by Christoph Kirst'
 
 import math
 import copy
@@ -167,6 +168,7 @@ class MultiHeadedAttention(nn.Module):
         #key.shape = (n_batch, n_heads, d_head, seq_len)
 
         # q-k attention
+        print(query.shape, key.shape)
         attn = torch.matmul(query, key) 
         #scroes.shape = (n_batch, n_heads, seq_len, seq_len)
 

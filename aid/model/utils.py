@@ -5,7 +5,8 @@ Utilities
 
 Utility functions for the transformer model, including visualization.
 """
-__author__ = "Christoph Kirst"
+__author__    = 'Christoph Kirst <christoph.kirst.ck@gmail.com>'
+__copyright__ = 'Copyright © 2022 by Christoph Kirst'
 
 import matplotlib.pyplot as plt
 import seaborn

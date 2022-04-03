@@ -7,6 +7,8 @@ Project to create an AI drummer that performs with Pianist Jenny Q Chai
 
 Utils
 """
+__author__    = 'Christoph Kirst <christoph.kirst.ck@gmail.com>'
+__copyright__ = 'Copyright © 2022 by Christoph Kirst'
 
 import os
 import subprocess

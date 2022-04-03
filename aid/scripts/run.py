@@ -5,6 +5,8 @@ AI Drummer Project
 
 Project to create an AI drummer that performs with Pianist Jenny Q Chai
 """
+__author__    = 'Christoph Kirst <christoph.kirst.ck@gmail.com>'
+__copyright__ = 'Copyright © 2022 by Christoph Kirst'
 
 
 #improeve tihs: loss functoin: not just coress entropy : if the event is a time shift wth differnt time intervall should be better than other ptich n=ro note event etc...
@@ -21,23 +23,27 @@ Project to create an AI drummer that performs with Pianist Jenny Q Chai
 
 #%% ##### Train real data ###########################################################
 
+
 directory_data = '/home/ckirst/Media/Music/AImedia/MLMusic/Data/groove_encoded'
 directory_base = '/home/ckirst/Media/Music/AImedia/MLMusic/Results/aid'
+
+directory_data = '/global/home/users/ckirst/Media/Music/AImedia/MLMusic/Data/groove_encoded'
+directory_base = '/global/home/users/ckirst/Media/Music/AImedia/MLMusic/Results/aid'
 
 from aid.model.run import train
 
 #%%
-train(epochs=100,
-      n_train_batches = 5,
+train(epochs=2000,
+      n_train_batches = None,
       n_evaluate_train_batches  = 0,
-      n_evaluate_test_batches   = 1,
+      n_evaluate_test_batches   = 10,
       
-      data_parameter = dict(batch_size=20),
+      data_parameter = dict(batch_size=30),
       
       base_directory=directory_base,
       data_directory=directory_data,
       
-      save = 1
+      save = 25
      )
 
 

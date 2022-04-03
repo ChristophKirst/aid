@@ -13,6 +13,8 @@ Optimization options:
     - time shifts and velocity controls should be handled a valued symbols as other wise they form the majority of symbols.
     - in the distance metric time shifts close to each other should be not conisdered as completely different codes -> codes of the from (symbol, value) or a modified loss functoin oculd fix this.
 """
+__author__    = 'Christoph Kirst <christoph.kirst.ck@gmail.com>'
+__copyright__ = 'Copyright © 2022 by Christoph Kirst'
 
 import io
 import numpy as np
