@@ -151,6 +151,7 @@ def evaluate_model(model, data, loss, n_batches = None, verbose = False, separat
     """evaluates the music transformer model."""
     
     model.eval()
+    device = model.device();
        
     if n_batches is None:
         n_batches = len(data);
@@ -174,9 +175,9 @@ def evaluate_model(model, data, loss, n_batches = None, verbose = False, separat
             if verbose:
                 time_batch_start = time.time()
             
-            src = batch.src
-            src_mask = batch.src_mask();
-            tgt = batch.tgt
+            src = batch.src.to(device);
+            src_mask = batch.src_mask(src);
+            tgt = batch.tgt.to(device)
             nrm = float(batch.n_tgt_codes());
 
             fwd = model(src, src_mask)
