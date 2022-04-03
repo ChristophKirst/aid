@@ -228,7 +228,7 @@ class MultiHeadedAttention(nn.Module):
         if self.value_relative_position is not None:
             vr = self.relative_position_representation(seq_len, self.value_relative_position);
             if self.mask_future:
-               vr = torch.cat([vr.flip(0), torch.zeros((seq_len-1,self.d_head))], dim=0);
+               vr = torch.cat([vr.flip(0), torch.zeros((seq_len-1,self.d_head), device=self.device())], dim=0);
             #vr.shape = (d_head, 2*seq_len-1)
  
             # alternative 1: n matrix multiplications 
@@ -259,9 +259,13 @@ class MultiHeadedAttention(nn.Module):
         
         return z;
     
+    def device(self):
+        device = next(self.parameters()).device;
+        return device;
+    
     def future_mask(self, size):
         """Mask to not attend to future positions in sequence."""
-        return torch.triu(torch.ones(size, size, dtype=torch.bool), diagonal=1).unsqueeze(0).unsqueeze(0);
+        return torch.triu(torch.ones(size, size, dtype=torch.bool, device=self.device()), diagonal=1).unsqueeze(0).unsqueeze(0);
 
     def relative_position_representation(self, seq_len, relative_position):
         """Clip/pad the relative positional embedding to fit sequence."""
@@ -270,7 +274,7 @@ class MultiHeadedAttention(nn.Module):
             if seq_len <= max_rel:
                 er = relative_position[:seq_len]
             else:
-                er = torch.zeros((seq_len, self.d_head));
+                er = torch.zeros((seq_len, self.d_head), device=self.device());
                 er[:max_rel,:] = relative_position[:, :]
                 er[max_rel:,:] = relative_position[-1,:]        
         else: # past and future attention
@@ -279,7 +283,7 @@ class MultiHeadedAttention(nn.Module):
              if seq_delta <= max_delta:
                 er = relative_position[(max_delta-seq_delta) : (max_delta+seq_delta+1)]
              else:
-                er = torch.zeros((2*seq_delta+1, self.d_head));
+                er = torch.zeros((2*seq_delta+1, self.d_head), device=self.device());
                 er[(seq_delta-max_delta):(seq_delta+max_delta+1),:] = relative_position[:, :]
                 er[:(seq_delta-max_delta),:] = relative_position[0, :]   
                 er[(seq_delta+max_delta):,:] = relative_position[-1, :] 
@@ -722,23 +726,35 @@ class Batch:
         self.ignore_code = ignore_code;    
         self.n_batch = src.size(0);
 
-    def src_mask(self):
-        return self.mask(self.src, self.ignore_code);
+    def src_mask(self, src = None):
+        if src is None:
+            src = self.src;
+        return self.mask(src, self.ignore_code);
     
-    def tgt_mask(self):
-        return self.mask(self.tgt, self.ignore_code);
+    def tgt_mask(self, tgt = None):
+        if tgt is None:
+            tgt = self.tgt;
+        return self.mask(tgt, self.ignore_code);
     
-    def src_attention_mask(self):
-        return self.attention_mask(self.src, self.ignore_code);
+    def src_attention_mask(self, src = None):
+        if src is None:
+            src = self.src; 
+        return self.attention_mask(src, self.ignore_code);
         
-    def tgt_attention_mask(self):
-        return self.attention_mask(self.tgt, self.ignore_code);
+    def tgt_attention_mask(self, tgt = None):
+        if tgt is None:
+            tgt = self.tgt;
+        return self.attention_mask(tgt, self.ignore_code);
     
-    def n_src_codes(self):
-        return self.n_codes(self.src, self.ignore_code)
+    def n_src_codes(self, src = None):
+        if src is None:
+            src = self.src; 
+        return self.n_codes(src, self.ignore_code)
     
-    def n_tgt_codes(self):
-        return self.n_codes(self.tgt, self.ignore_code) 
+    def n_tgt_codes(self, tgt = None):
+        if tgt is None:
+            tgt = self.tgt;
+        return self.n_codes(tgt, self.ignore_code) 
     
     def batch_size(self):
         return self.src.shape[0];

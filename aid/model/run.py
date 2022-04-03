@@ -95,7 +95,7 @@ def train_epoch(epoch, model, data, loss, optimizer, n_batches = None, verbose =
           optimizer.zero_grad()
   
         src = batch.src.to(device)
-        src_mask = batch.src_mask();
+        src_mask = batch.src_mask(src);
         tgt = batch.tgt.to(device);
         nrm = batch.n_tgt_codes();
   
