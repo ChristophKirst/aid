@@ -21,3 +21,7 @@ Thumbs.db
 
 # unzipped resources
 results/
+
+# old files
+aid/model/old/
+aid/scripts/old/
