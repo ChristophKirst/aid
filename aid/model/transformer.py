@@ -168,7 +168,7 @@ class MultiHeadedAttention(nn.Module):
         #key.shape = (n_batch, n_heads, d_head, seq_len)
 
         # q-k attention
-        print(query.shape, key.shape)
+        #print(query.shape, key.shape)
         attn = torch.matmul(query, key) 
         #scroes.shape = (n_batch, n_heads, seq_len, seq_len)
 

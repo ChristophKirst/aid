@@ -27,21 +27,41 @@ import aid.dataset.midi_encoder as encoder
 
 import aid.dataset.midi_utils as utils;
 
+
+### GPU detection
+
+def get_device():
+    if torch.cuda.device_count() > 0:
+        device = torch.device("cuda")
+    else:
+        #print('Warning: No gpu device found!')
+        device = torch.device("cpu");
+    return device
+
+def set_device(obj, device = None):
+    if device is None:
+        device = get_device()
+    obj = obj.to(device);
+    return obj;
+
+
 ### Object creation
 
-def create_model(n_src_vocab = CODE_SIZE, **kwargs):
-    return Transformer.create(n_src_vocab=n_src_vocab, **kwargs);
+def create_model(n_src_vocab = CODE_SIZE, device = None, **kwargs):
+    model = Transformer.create(n_src_vocab=n_src_vocab, **kwargs);
+    model = set_device(model, device=device);
+    return model;
     
-
 def create_optimizer(model, **kwargs):
-    return Optimizer.create(model=model, **kwargs);
+    optimizer = Optimizer.create(model=model, **kwargs);
+    return optimizer
 
+def create_loss(n_src_vocab = CODE_SIZE, ignore_code = CODE_PAD, device = None, **kwargs):
+    loss = Loss(n_vocab=n_src_vocab, ignore_code=ignore_code, **kwargs);
+    loss = set_device(loss, device=device);
+    return loss;
 
-def create_loss(n_src_vocab = CODE_SIZE, ignore_code = CODE_PAD, **kwargs):
-    return Loss(n_vocab=n_src_vocab, ignore_code=ignore_code, **kwargs);
-
-
-def create_data(directory, **kwargs):
+def create_data(directory, device = None, **kwargs):
     return train_test_dataloaders(directory=directory, **kwargs);
 
 
@@ -51,6 +71,7 @@ def train_epoch(epoch, model, data, loss, optimizer, n_batches = None, verbose =
     """Trains the Music transformer model for one epoch."""
     
     model.train();
+    device = model.device();
     
     if n_batches is None:
         n_batches = len(data);
@@ -73,9 +94,9 @@ def train_epoch(epoch, model, data, loss, optimizer, n_batches = None, verbose =
         if optimizer:
           optimizer.zero_grad()
   
-        src = batch.src
+        src = batch.src.to(device)
         src_mask = batch.src_mask();
-        tgt = batch.tgt
+        tgt = batch.tgt.to(device);
         nrm = batch.n_tgt_codes();
   
         fwd = model(src, src_mask)
@@ -332,6 +353,7 @@ def save_model(model, sink = None, base_directory = None, directory = None, verb
     return sink;
 
 
+
 ### User control
 
 def train(
@@ -367,7 +389,10 @@ def train(
         
         ### dirs ###
         directory      = None,
-        base_directory = None
+        base_directory = None,
+        clean_directories = False,
+        
+        device = None
     ):
     """Train the music transformer using hyerparameter for the model, optimizer and loss."""  
       
@@ -377,6 +402,13 @@ def train(
     if use_tensorboard:
        directory_tensorboard = directory_default(base_directory=base_directory, directory=directory, sub_directory=tensorboard_directory, create=True);
    
+    if clean_directories:
+        directories = [directory_results, directory_model, directory_model_best];
+        if use_tensorboard:
+            directories += [directory_tensorboard];
+        for d in directories:
+            os.system('rm %s' % os.path.join(d, '*')); 
+    
     file_results = os.path.join(directory_results, results_file_name)
     file_best_epochs = os.path.join(directory_results, results_best_file_name)
     
@@ -408,6 +440,12 @@ def train(
       from torch.utils.tensorboard import SummaryWriter
       tensorboard_summary = SummaryWriter(log_dir=directory_tensorboard)
     
+    ### device @@@
+    if device is None:
+        device = get_device();
+    if verbose:
+        print('train: using %r' % device);
+    
     ### model and data ###
     if data_train is None:
        data_train, _ =  create_data(directory=data_directory, **data_parameter);
@@ -416,13 +454,13 @@ def train(
        data_eval_train, data_eval_test = create_data(directory=data_directory, **data_parameter);
     
     if model is None:
-       model = create_model(**model_parameter)
+       model = create_model(device=device,**model_parameter)
     
     if optimizer is None:
        optimizer = create_optimizer(model=model, **optimizer_parameter)
     
     if loss is None:
-        loss = create_loss(**loss_parameter);
+        loss = create_loss(device=device, **loss_parameter);
     
     ### load previous training session ###
     if continue_model is not None:

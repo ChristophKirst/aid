@@ -23,28 +23,31 @@ __copyright__ = 'Copyright © 2022 by Christoph Kirst'
 
 #%% ##### Train real data ###########################################################
 
-
+from aid.model.run import train
 directory_data = '/home/ckirst/Media/Music/AImedia/MLMusic/Data/groove_encoded'
 directory_base = '/home/ckirst/Media/Music/AImedia/MLMusic/Results/aid'
 
+#%%
 directory_data = '/global/home/users/ckirst/Media/Music/AImedia/MLMusic/Data/groove_encoded'
 directory_base = '/global/home/users/ckirst/Media/Music/AImedia/MLMusic/Results/aid'
 
-from aid.model.run import train
 
 #%%
-train(epochs=2000,
-      n_train_batches = None,
+train(epochs=2,
+      n_train_batches = 5,
       n_evaluate_train_batches  = 0,
       n_evaluate_test_batches   = 10,
       
-      data_parameter = dict(batch_size=30),
+      data_parameter = dict(batch_size=30, max_length=2048),
       
       base_directory=directory_base,
       data_directory=directory_data,
       
-      save = 25
+      save = 1,
+      
+      clean_directories = True
      )
+
 
 
 #%% continue traninig from last saved model
