@@ -9,18 +9,22 @@ __author__    = 'Christoph Kirst <christoph.kirst.ck@gmail.com>'
 __copyright__ = 'Copyright © 2022 by Christoph Kirst'
 
 
+"""
 ### Remote training
 
 ### Screen
-# screen -S aid
+screen -S aid
 # ctrl-a ctrl-d to detach
-# screen -r aid 
+screen -r aid 
 
 ### ssh
-#ssh ckirst@exalearn.lbl.gov
-#ssh ckirst@exalearn2.lbl.gov
-#sshfs ckirst@exalearn2.lbl.gov:/global/home/users/ckirst/Media/Music/AImedia/MLMusic/ /home/ckirst/exalearn/
+ssh ckirst@exalearn.lbl.gov
+ssh ckirst@exalearn2.lbl.gov
+sshfs ckirst@exalearn2.lbl.gov:/global/home/users/ckirst/Media/Music/AImedia/MLMusic/ /home/ckirst/exalearn/
 
+
+### tensorboard
+tensorboard --logdir /home/ckirst/exalearn/Results/aid/tensorboard/
 
 
 ### Notes
@@ -34,7 +38,7 @@ __copyright__ = 'Copyright © 2022 by Christoph Kirst'
     # 4) better time embedding via VSAs ?
     # 5) multi-scale transformer / transfoemr attention to understand compelx dynamical systems ?
     # 6) generalized granger causality: tranforer causality: how much does predictability improve with additional brain area dynamics
-
+"""
 
 #%% ##### Train real data ###########################################################
 
@@ -56,7 +60,7 @@ model, optimizer, loss = train(
       n_evaluate_train_batches  = 0,
       n_evaluate_test_batches   = None,
       
-      data_parameter = dict(batch_size=25, max_length=64),
+      data_parameter = dict(batch_size=5, max_length=512),
       
       base_directory=directory_base,
       data_directory=directory_data,

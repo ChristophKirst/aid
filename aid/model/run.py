@@ -132,6 +132,9 @@ def train_epoch(epoch, model, data, loss, optimizer, n_batches = None, verbose =
             print("time (s): %r" % time_batch_total)
             if separator: print(separator)
 
+    if optimizer:
+        optimizer.step_epoch();
+
     loss_mean = loss_total / code_total;
 
     if verbose:

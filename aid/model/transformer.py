@@ -567,35 +567,36 @@ class Transformer(nn.Module):
 
 class Optimizer:
     """Optimer wrapper with learning rate dynamics used for Transformer training."""
-    def __init__(self, d_model, factor, warmup, optimizer):
+    def __init__(self, d_model, factor, warmup, optimizer, epoch = 0):
         self.optimizer = optimizer
         self.warmup = warmup
         self.factor = factor
         self.d_model = d_model
-        self._step = 0
-        self._rate = 0
+        self.epoch = epoch
         
     def step(self):
         """Update learning rate and parameters."""
-        self._step += 1
         self.set_rate();
         self.optimizer.step()
         
     def zero_grad(self):
         self.optimizer.zero_grad();
         
-    def set_step(self, step):
+    def set_epoch(self, epoch):
         """Start at specified step."""
-        self._step = step;
+        self.epoch = epoch;
+        self.set_rate();
+        
+    def step_epoch(self):
+        self.epoch += 1;
         self.set_rate();
     
     def set_rate(self):
         rate = self.rate()
         for p in self.optimizer.param_groups:
             p['lr'] = rate
-        self._rate = rate
              
-    def rate(self, step = None):
+    def rate(self, epoch = None):
         """Learning rate dynamics.
         
         lr = factor / (d_model)**0.5  * min(step**-0.5, step * warump**(-1.5))
@@ -604,9 +605,13 @@ class Optimizer:
         ---------
         https://arxiv.org/abs/1706.03762
         """
-        if step is None:
-            step = self._step
-        return self.factor *  (self.d_model ** (-0.5) * min(step ** (-0.5), step * self.warmup ** (-1.5)))
+        if epoch is None:
+            epoch = self.epoch
+        if epoch <= 0:
+            if epoch < 0:
+                print('Warning: epoch = %r' % epoch);
+            epoch = 1;
+        return self.factor *  (self.d_model ** (-0.5) * min(epoch ** (-0.5), epoch * self.warmup ** (-1.5)))
  
     @classmethod
     def create(cls, model, factor = 2, warmup = 4000, optimizer = None, betas = (0.9, 0.98), eps = 1e-9):
