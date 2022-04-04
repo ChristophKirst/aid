@@ -30,10 +30,11 @@ import aid.dataset.midi_utils as utils;
 
 class DataParallel(torch.nn.DataParallel):
     def __getattr__(self, name):
-        print(name);
-        return getattr(self.module, name)
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.module, name)
         
-
 def get_device():
     if torch.cuda.device_count() > 0:
         device = torch.device("cuda")

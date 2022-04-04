@@ -78,8 +78,6 @@ model, optimizer, loss = train(
      )
 
 
-#%% simple tests
-
 model, optimizer, loss = train(
       epochs=2,
       n_train_batches = 2,
@@ -99,6 +97,11 @@ model, optimizer, loss = train(
       
       clean_directories = True
      )
+
+
+
+
+#%% simple tests
 
 #%% continue traninig from last saved model
 
