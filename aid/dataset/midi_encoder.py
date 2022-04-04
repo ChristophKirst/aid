@@ -13,8 +13,6 @@ Optimization options:
     - time shifts and velocity controls should be handled a valued symbols as other wise they form the majority of symbols.
     - in the distance metric time shifts close to each other should be not conisdered as completely different codes -> codes of the from (symbol, value) or a modified loss functoin oculd fix this.
 """
-__author__    = 'Christoph Kirst <christoph.kirst.ck@gmail.com>'
-__copyright__ = 'Copyright © 2022 by Christoph Kirst'
 
 import io
 import numpy as np
@@ -56,28 +54,28 @@ MIDI_PITCH_FROM_INDEX = { i : p for i,p in enumerate(MIDI_INFO['pitch'])}
 
 MIDI_PITCH_SIZE = max(MIDI_PITCH_TO_INDEX.values()) + 1;
 
-CODE_EVENT_SIZES = odict(note_on    = MIDI_PITCH_SIZE, 
-                         note_off   = MIDI_PITCH_SIZE,
-                         velocity   = 32,
-                         time_shift = 100,
-                         control    = 0,
-                         delimeter  = 2
-                        );
+EVENT_SIZES = odict(note_on    = MIDI_PITCH_SIZE, 
+                    note_off   = MIDI_PITCH_SIZE,
+                    velocity   = 32,
+                    time_shift = 100,
+                    control    = 0,
+                    delimeter  = 2
+                   );
 
-CODE_EVENTS  = [k for k,v in CODE_EVENT_SIZES.items() if v > 0]
-CODE_SIZE    = sum(CODE_EVENT_SIZES.values())
+EVENTS   = [k for k,v in EVENT_SIZES.items() if v > 0]
+N_TOKENS = sum(EVENT_SIZES.values())
 
-CODE_START_INDEX = { k : v for k,v in zip(CODE_EVENT_SIZES.keys(), np.hstack([[0], np.cumsum(list(CODE_EVENT_SIZES.values()))[:-1]])) if CODE_EVENT_SIZES[k] > 0 }
-CODE_END_INDEX   = { k : v for k,v in zip(CODE_EVENT_SIZES.keys(), np.cumsum(list(CODE_EVENT_SIZES.values()))) if CODE_EVENT_SIZES[k] > 0 }
+TOKEN_START_INDEX = { k : v for k,v in zip(EVENT_SIZES.keys(), np.hstack([[0], np.cumsum(list(EVENT_SIZES.values()))[:-1]])) if EVENT_SIZES[k] > 0 }
+TOKEN_END_INDEX   = { k : v for k,v in zip(EVENT_SIZES.keys(), np.cumsum(list(EVENT_SIZES.values()))) if EVENT_SIZES[k] > 0 }
 
-CODE_END = CODE_START_INDEX['delimeter'];
-CODE_PAD = CODE_END + 1;
+TOKEN_END = TOKEN_START_INDEX['delimeter'];
+TOKEN_PAD = TOKEN_END + 1;
 
-CODE_TO_EVENT = dict();
-for event in CODE_EVENTS:
-  CODE_TO_EVENT.update( { i : (event, i - CODE_START_INDEX[event]) for i in range(CODE_START_INDEX[event], CODE_END_INDEX[event])})
+TOKEN_TO_EVENT = dict();
+for event in EVENTS:
+  TOKEN_TO_EVENT.update( { i : (event, i - TOKEN_START_INDEX[event]) for i in range(TOKEN_START_INDEX[event], TOKEN_END_INDEX[event])})
 
-CODE_TIME_RESOLUTION = 100;
+TIME_RESOLUTION = 100;
 
 
 class Action:
@@ -108,15 +106,15 @@ class Event:
         if position is not None:
             self.position = position;
 
-    def to_code(self):
-        return CODE_START_INDEX[self.type] + self.value
+    def to_token(self):
+        return TOKEN_START_INDEX[self.type] + self.value
 
     @staticmethod
-    def from_code(code, position = None):
+    def from_token(token, position = None):
         try:
-            event = CODE_TO_EVENT[int(code)];
+            event = TOKEN_TO_EVENT[int(token)];
         except:
-            print('Could not decode %r' % code);
+            print('Could not decode %r' % token);
             
         return Event(*event, position=position)
         
@@ -134,28 +132,28 @@ class Event:
         return l;
 
 
-def velocity_to_value(velocity, velocity_bins = CODE_EVENT_SIZES['velocity']):
+def velocity_to_value(velocity, velocity_bins = EVENT_SIZES['velocity']):
     velocity_discretization = 128 / velocity_bins;
     return int(np.floor(velocity / velocity_discretization))
 
-def velocity_from_value(value, velocity_bins = CODE_EVENT_SIZES['velocity']):
+def velocity_from_value(value, velocity_bins = EVENT_SIZES['velocity']):
     velocity_discretization = 128 / velocity_bins; 
     return min(int(value * velocity_discretization), 127)
 
-def time_shift_to_value(time_shift, time_resolution = CODE_TIME_RESOLUTION):
+def time_shift_to_value(time_shift, time_resolution = TIME_RESOLUTION):
     return int(round((time_shift) * time_resolution)) - 1  # (-1 as timeshift with value 0 is timeshift by a single bin -> otherwise no time_shift necessary)
 
-def time_shift_from_value(value, time_resolution = CODE_TIME_RESOLUTION):
+def time_shift_from_value(value, time_resolution = TIME_RESOLUTION):
     return ((value + 1) / time_resolution)
     
 
 def encode_midi(midi, encode_controls = False, convert_sustain = None, return_events = False, return_actions = False):
     """Convert midi file to encoded sequence of integers for machine learning."""
     
-    time_shift_max  = CODE_EVENT_SIZES['time_shift']
-    time_resolution = CODE_TIME_RESOLUTION;
+    time_shift_max  = EVENT_SIZES['time_shift']
+    time_resolution = TIME_RESOLUTION;
     
-    velocity_bins = CODE_EVENT_SIZES['velocity'];
+    velocity_bins = EVENT_SIZES['velocity'];
     encode_velocity = velocity_bins > 0;
     if encode_velocity:
         velocity_discretization = 128 / velocity_bins;
@@ -234,27 +232,27 @@ def encode_midi(midi, encode_controls = False, convert_sustain = None, return_ev
     if return_events:
         return events;
 
-    #convert to codes
-    codes = [e.to_code() for e in events];
-    return codes;
+    #convert to sequence of tokens
+    tokens = [e.to_token() for e in events];
+    return tokens;
 
 
-def decode_midi(codes, filename = None, instrument = None, return_notes = False, return_actions = False, return_events = False, save_code_positions = False):
+def decode_midi(tokens, filename = None, instrument = None, return_notes = False, return_actions = False, return_events = False, save_token_positions = False):
     """Decode code to midi sequence."""
     
     # conversions
-    time_resolution = CODE_TIME_RESOLUTION;
+    time_resolution = TIME_RESOLUTION;
     
-    velocity_bins = CODE_EVENT_SIZES['velocity'];
+    velocity_bins = EVENT_SIZES['velocity'];
     decode_velocity = velocity_bins > 0;
     if decode_velocity:
         velocity_discretization = 128 / velocity_bins;
         
     # decoding
-    if save_code_positions:
-        events = [Event.from_code(code, position=i) for i,code in enumerate(codes)];
+    if save_token_positions:
+        events = [Event.from_token(token, position=i) for i,token in enumerate(tokens)];
     else:
-        events = [Event.from_code(code) for code in codes]
+        events = [Event.from_token(token) for token in tokens]
     if return_events:
         return events;
     #print(events)
@@ -262,31 +260,38 @@ def decode_midi(codes, filename = None, instrument = None, return_notes = False,
     time = 0
     velocity = 0
     actions = []
-    if save_code_positions:
+    if save_token_positions:
         position = dict(time_shift = None, velocity=None)
 
     for event in events:
         #print(time)
         if   event.type == 'time_shift':
             time += ((event.value+1) / time_resolution)
-            if save_code_positions:
+            if save_token_positions:
                 position['time_shift'] = event.position;
         elif event.type == 'velocity':
             velocity = min(int(event.value * velocity_discretization), 127)
-            if save_code_positions:
+            if save_token_positions:
                 position['velocity'] = event.position;
         elif event.type == 'control':
             action = Action(event.type, time, event.value, number=event.number)
-            if save_code_positions:
+            if save_token_positions:
                 action.position = position.copy();
                 action.position['control'] = event.position;
             actions.append(action)
         elif event.type == 'delimeter':
-            if event.to_code() == CODE_END:
-                break;      
+            if event.to_token() == TOKEN_END:
+                action = Action(event.type, time, event.value, number=event.number)
+                if save_token_positions:
+                    action.position = position.copy();
+                    action.position['delimeter'] = event.position;
+                actions.append(action)
+                break;   
+            else: # stop at padding!
+                break;
         else:
             action = Action(event.type, time, MIDI_PITCH_FROM_INDEX[event.value], velocity=velocity);
-            if save_code_positions:
+            if save_token_positions:
                 action.position = position.copy()
                 action.position[event.type] = event.position;
             actions.append(action)
@@ -312,7 +317,7 @@ def decode_midi(codes, filename = None, instrument = None, return_notes = False,
                     continue
                 note = pm.Note(on.velocity, action.value, on.time, off.time);
                 
-                if save_code_positions:
+                if save_token_positions:
                     note.position = on.position.copy();
                     note.position['note_off'] = off.position['note_off'];
                     note.position['time_shift_off'] = off.position['time_shift'];
@@ -323,7 +328,7 @@ def decode_midi(codes, filename = None, instrument = None, return_notes = False,
         elif action.type == 'control':
              control = pm.ControlChange(action.number, action.value, action.time);
             
-             if save_code_positions:
+             if save_token_positions:
                  control.position = action.position.copy()
                     
              controls.append(control)
@@ -348,9 +353,9 @@ def decode_midi(codes, filename = None, instrument = None, return_notes = False,
     return mid
 
 
-def code_to_label(codes):
+def tokens_to_label(tokens):
     # decoding
-    return [Event.from_code(code).label() for code in codes]
+    return [Event.from_token(token).label() for token in tokens]
 
 
 def _test():
@@ -359,9 +364,9 @@ def _test():
     
     midi = '/home/ckirst/Media/Music/AImedia/MLMusic/Data/groove/drummer1/session1/1_funk_80_beat_4-4.mid'
     midi = encoder.pm.PrettyMIDI(midi_file=midi);
-    code = encoder.encode_midi(midi)
+    tokens = encoder.encode_midi(midi)
     
-    decode = encoder.decode_midi(code)
+    decode = encoder.decode_midi(tokens)
     
     n_notes = 10;
     midi.instruments[0].notes[:n_notes]

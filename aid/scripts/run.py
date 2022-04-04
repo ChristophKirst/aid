@@ -38,6 +38,13 @@ tensorboard --logdir /home/ckirst/exalearn/Results/aid/tensorboard/
     # 4) better time embedding via VSAs ?
     # 5) multi-scale transformer / transfoemr attention to understand compelx dynamical systems ?
     # 6) generalized granger causality: tranforer causality: how much does predictability improve with additional brain area dynamics
+    
+    
+# multi gpu training
+
+    1.) replace DataParallel with DistributedDataParallel
+    https://pytorch.org/tutorials/intermediate/ddp_tutorial.html
+    https://medium.com/codex/a-comprehensive-tutorial-to-pytorch-distributeddataparallel-1f4b42bb1b51  
 """
 
 #%% ##### Train real data ###########################################################
@@ -60,7 +67,7 @@ model, optimizer, loss = train(
       n_evaluate_train_batches  = 0,
       n_evaluate_test_batches   = None,
       
-      data_parameter = dict(batch_size=5, max_length=512),
+      data_parameter = dict(batch_size=5, max_sequence_length=512),
       
       base_directory=directory_base,
       data_directory=directory_data,
@@ -79,7 +86,7 @@ model, optimizer, loss = train(
       n_evaluate_train_batches  = 0,
       n_evaluate_test_batches   = 1,
       
-      data_parameter = dict(batch_size=5, max_length=512),
+      data_parameter = dict(batch_size=5, max_sequence_length=512),
       
       base_directory=directory_base,
       data_directory=directory_data,

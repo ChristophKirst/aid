@@ -13,11 +13,8 @@ __copyright__ = 'Copyright © 2022 by Christoph Kirst'
 
 #%%
 
-import os
 import aid.dataset.groove as groove
 import aid.dataset.midi_encoder as encoder
-
-
 
 #%% download data set
 
@@ -43,8 +40,8 @@ au.plot_midi(example)
 
 au.play_midi(example)
 
-code = encoder.encode_midi(example)
-print(code[:20])
+tokens = encoder.encode_midi(example)
+print(tokens[:20])
 
 #%% Encode
 
@@ -55,7 +52,7 @@ groove.encode_dataset(directory_midi, directory_encode)
 
 directory_train, directory_validate, directory_test = groove.train_validate_test_directories(directory_encode)
 
-dataset = groove.GrooveDataset(directory_train, random_sequence = None, max_length = None)
+dataset = groove.GrooveDataset(directory_train, random_sequence_start = None, max_sequence_length = None)
 
 #%% lengths of the midi data -> uniform batch sizes are better for efficient traiing (varialbe sequence length)
 import matplotlib.pyplot as plt
@@ -77,7 +74,7 @@ for i,dataset in enumerate(groove.train_validate_test_datasets(directory_encode)
 
 #%% listen to a long data set
 
-dataset = groove.GrooveDataset(directory_train, random_sequence = None, max_length = None)
+dataset = groove.GrooveDataset(directory_train, random_sequence_start = None, max_sequence_length = None)
 lengths = [len(d[0]) for d in dataset]
 
 import numpy as np
@@ -86,7 +83,7 @@ sorted_idx = np.argsort(lengths)[::-1]
 import aid.utils.utils as utils
 
 i = sorted_idx[10];
-code = dataset[i][0];
+tokens = dataset[i][0];
 print(lengths[i])
 
-utils.play(code)
+utils.play(tokens)

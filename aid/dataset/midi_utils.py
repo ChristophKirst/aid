@@ -106,13 +106,13 @@ def plot_midi(midi, ptype = 'musescore', measures = all, **kwargs):
         return m.plot(**kwargs)
     
     
-def play_code(code, **kwargs):
-    midi = encoder.decode_midi(code);
+def play_tokens(tokens, **kwargs):
+    midi = encoder.decode_midi(tokens);
     play_midi(midi, **kwargs);
 
     
-def plot_code(code, **kwargs):
-    midi = encoder.decode_midi(code);
+def plot_tokens(tokens, **kwargs):
+    midi = encoder.decode_midi(tokens);
     plot_midi(midi, **kwargs);
     
     
@@ -133,19 +133,21 @@ import numpy as np
 import matplotlib.pyplot as plt        
 from matplotlib.collections import LineCollection    
 
-def plot_midi_bars(code, attention = None, attention_events = None, 
-                   
-                   pitches = None, pitch_to_index = None, pitch_labels = None,
-                   
-                   
-                   plot_events = ['time_shift', 'velocity'], event_sizes = None, event_extends = None,
-                   
-                   plot_played_pitches_only = False, label_played_pitches_only = True,
-                   
-                   fig = None, linewidth = 5,):
+def plot_midi_bars(tokens, attention = None, 
+                   attention_events = None, 
+                   pitches = None, 
+                   pitch_to_index = None, 
+                   pitch_labels = None,  
+                   plot_events = ['time_shift', 'velocity'], 
+                   event_sizes = None, 
+                   event_extends = None,
+                   plot_played_pitches_only = False, 
+                   label_played_pitches_only = True,
+                   linewidth = 5,
+                   fig = None):
 
-    n_code = len(code);    
-    events = encoder.decode_midi(code, return_events = True);
+    n_tokens = len(tokens);    
+    events = encoder.decode_midi(tokens, return_events = True);
     
     if pitches is None:
         pitches = list(encoder.MIDI_PITCH_TO_INDEX.keys())
@@ -175,7 +177,7 @@ def plot_midi_bars(code, attention = None, attention_events = None,
     #print(n_pitches)
     
     if event_sizes is None:
-        event_sizes = encoder.CODE_EVENT_SIZES;
+        event_sizes = encoder.EVENT_SIZES;
     
     if event_extends is None:  
         event_extends = dict(time_shift = 1,
@@ -227,11 +229,11 @@ def plot_midi_bars(code, attention = None, attention_events = None,
 
  
     if attention is not None:
-        positions = np.full((n_code, 2), np.nan);
+        positions = np.full((n_tokens, 2), np.nan);
     else:
         positions = None;
         
-    segments = np.full((n_code, 2, 2), np.nan);
+    segments = np.full((n_tokens, 2, 2), np.nan);
     segment_colors = [];
     
     time = 0;

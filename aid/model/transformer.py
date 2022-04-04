@@ -16,7 +16,7 @@ https://arxiv.org/abs/1706.03762
 relative position representations  
 https://arxiv.org/abs/1803.02155
 
-referenc for training implementations
+reference for training implementations
 https://nlp.seas.harvard.edu/2018/04/03/attention.html
 """
 __author__    = 'Christoph Kirst <christoph.kirst.ck@gmail.com>'
@@ -49,10 +49,10 @@ def average(model, models):
 
 
 class Embedding(nn.Module):
-    """Embedding of discrete code to vector space."""
-    def __init__(self, n_vocab, d_model):
+    """Embedding of discrete tokens into a vector space."""
+    def __init__(self, n_tokens, d_model):
         super(Embedding, self).__init__()
-        self.embedding = nn.Embedding(n_vocab, d_model)
+        self.embedding = nn.Embedding(n_tokens, d_model)
         self.factor = np.sqrt(d_model);
 
     def forward(self, x):
@@ -72,12 +72,12 @@ class Embedding(nn.Module):
 #         std = x.std(-1, keepdim=True)
 #         return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
  
-
 LayerNorm = nn.LayerNorm   
-    
+  
+  
 class MultiHeadedAttention(nn.Module):
     """Multi head attention network with optional relative position representation."""
-    def __init__(self, d_model, n_heads, max_relative_position = None, value_relative_position = False, dropout = 0.1, mask_future = True):
+    def __init__(self, d_model, n_heads, max_relative_position = None, add_relative_position_to_value = False, dropout = 0.1, mask_future = True):
         super(MultiHeadedAttention, self).__init__()
         if (d_model % n_heads != 0):
             raise ValueError('Model dimension d_model=%d must be divisible by the number of attention heads n_heads=%d!' % (d_model, n_heads))
@@ -104,7 +104,7 @@ class MultiHeadedAttention(nn.Module):
             else:
                self.relative_position = Parameter(torch.rand((2*(max_relative_position - 1) + 1, self.d_head), dtype=torch.float32))
                 
-            if value_relative_position:
+            if add_relative_position_to_value:
                 if self.mask_future:
                    self.value_relative_position = Parameter(torch.rand((max_relative_position, self.d_head), dtype=torch.float32))
                 else:
@@ -116,7 +116,6 @@ class MultiHeadedAttention(nn.Module):
             self.relative_position = None  
             self.value_relative_position = None
 
-         
         #storage for visualization etc.
         self.attention = None
         self.srel = None;
@@ -143,7 +142,7 @@ class MultiHeadedAttention(nn.Module):
             #mask.shape = (n_batch, seq_len)
             #mask_future.shape = (1,1,seq_len,seq_len)
             
-            # alternative 1: precalucalte mask
+            # alternative 1: precalculate mask
             #mask = mask.unsqueeze(1).unsqueeze(1);
             ##mask.shape = (n_batch, 1, 1, seq_len)
             #mask = torch.logical_or(mask,  mask_future);
@@ -247,8 +246,7 @@ class MultiHeadedAttention(nn.Module):
             zr = zr.squeeze(-2);
             #zr.shape = (n_batch, n_heads, d_heads, seq_len, d_head)
             z += zr;
-            
-        
+               
         z = z.transpose(1, 2).contiguous()
         z = z.reshape(n_batch, seq_len, -1);
         #z.shape = (n_batch, seq_len, d_model)
@@ -389,12 +387,41 @@ class Encoder(nn.Module):
         return x
 
 
+class Generator(nn.Module):
+    def __init__(self, d_model, n_tokens, softmax = True, logits = True):
+        super(Generator, self).__init__()
+        self.linear = nn.Linear(d_model, n_tokens);
+        self.logits = logits;
+        if self.logits and softmax is False:
+            softmax = True;
+        if softmax is True:
+            if self.logits:
+                self.softmax = F.log_softmax;
+            else:
+                self.softmax = F.softmax;         
+        else:
+            self.softmax = False;
+    
+    def forward(self, x):
+        x = self.linear(x);
+        if self.softmax:
+            x = self.softmax(x, dim=-1);
+        return x;
+    
+
 class Transformer(nn.Module):
     """Transformer network to transform a sequence of tokens into a future sequence of tokens."""
-    def __init__(self, encoder, embedding):
+    def __init__(self, encoder, embedding, generator, criterion = None):
         super(Transformer, self).__init__()
-        self.encoder = encoder
+        self.encoder   = encoder
         self.embedding = embedding
+        self.generator = generator;
+        if criterion is not None:
+            self.criterion = criterion;
+      
+    @property
+    def n_tokens(self):
+        return self.generator.linear.weight.shape[1];
       
     @property
     def d_model(self):
@@ -402,25 +429,30 @@ class Transformer(nn.Module):
       
     def forward(self, x, mask = None):
         """Transform sequence into scores for future sequence."""
-        return self.encode(x, mask)
+        return self.generator(self.encode(x, mask))
      
     def encode(self, x, mask = None):
         return self.encoder(self.embedding(x), mask)
     
-    def decode(self, y, method = 'max', max_code = None):
-        """Convert output of forward into a code sequence."""
-        if max_code is not None:
-            y = y[...,:max_code];
+    def decode(self, y, method = 'max'):
+        """Convert output of forward into a token sequence."""
         if method == 'max':
-            _, code = torch.max(y, dim = -1)       
+            _, sequence = torch.max(y, dim = -1)       
         elif method == 'random':
-            probs = F.softmax(y, dim=-1);
-            distrib = torch.distributions.categorical.Categorical(probs=probs)
-            code = distrib.sample()
-        return code;
-               
-    def generate(self, primer = None, max_tgt_length = 1024, method = 'random', verbose = True, 
-                       start_code = 1, end_code = None, ignore_code = None, max_code = None,
+            if self.generator.logits:
+                distrib = torch.distributions.categorical.Categorical(logits=y)
+            else:
+                if not self.generator.softmax:
+                    y = F.softmax(y, dim=-1);
+                distrib = torch.distributions.categorical.Categorical(probs=y)
+            sequence = distrib.sample()
+        return sequence;
+     
+    def loss(self, src, tgt, mask = None):
+        return self.criterion(self.forward(src, mask=mask), tgt);
+    
+    def generate(self, primer = None, max_sequence_length = 1024, method = 'random', verbose = True, 
+                       start_token = 1, end_token = None, ignore_token = None, n_tokens = None,
                        dtype = torch.long, softmax = True, beam_search = 4, return_probabilities = False):
         """Generate sequence from optional primer.
         
@@ -435,21 +467,24 @@ class Transformer(nn.Module):
             verbose = 10;
         
         if verbose:
-            print("Generating sequence via method=%s of max length-%d%", (method, max_tgt_length))
+            print("Generating sequence via method=%s of max length-%d%", (method, max_sequence_length))
 
-        device = next(self.parameters()).device
+        device = self.device();
+        
+        if n_tokens is None:
+            n_tokens = self.n_tokens();
 
-        sequence = torch.full((1,max_tgt_length), ignore_code, dtype=dtype, device=device)
+        sequence = torch.full((1,max_sequence_length), ignore_token, dtype=dtype, device=device)
 
         if primer is not None:
            n_primer = len(primer)
            sequence[..., :n_primer] = primer.type(dtype).to(device)
         else:
            n_primer = 1;   
-           sequence[..., :1] = start_code;
+           sequence[..., :1] = start_token;
            
         if return_probabilities:
-            probs = torch.full((1,max_tgt_length, max_code), 0, dtype=torch.float, device=device)
+            probs = torch.full((1,max_sequence_length, n_tokens), 0, dtype=torch.float, device=device)
             probs[0,torch.arange(n_primer),sequence[..., :n_primer]] = 1;  
         
         if softmax is True:
@@ -457,30 +492,30 @@ class Transformer(nn.Module):
         
         # generation loop
         s = n_primer
-        while(s < max_tgt_length):
+        while(s < max_sequence_length):
             y = self.forward(sequence[..., :s]);
-            if max_code is not None:
-                y = y[..., :max_code]
+            if n_tokens is not None:
+                y = y[..., :n_tokens]
             if softmax:
                 y = softmax(y);
-            prob_code = y[:, s-1, :]
+            prob_tokens = y[:, s-1, :]
             
             if return_probabilities: # shifted by one as forward shifts everyhting by one
-                probs[:,s,:] = prob_code;
+                probs[:,s,:] = prob_tokens;
 
             if method == 'max':
-                _, next_code = torch.max(prob_code, dim = -1)
-                sequence[:, s] = next_code;
+                _, next_token = torch.max(prob_tokens, dim = -1)
+                sequence[:, s] = next_token;
                 
             elif method == 'random':
-                distrib = torch.distributions.categorical.Categorical(probs=prob_code)
-                next_code = distrib.sample()
-                sequence[:, s] = next_code;
+                distrib = torch.distributions.categorical.Categorical(probs=prob_tokens)
+                next_token = distrib.sample()
+                sequence[:, s] = next_token;
                 
             elif method == 'beam':
-                n_vocab = prob_code.size(-1);
-                prob_code = prob_code.flatten()
-                top_res, top_idx = torch.topk(prob_code, beam_search)
+                n_vocab = prob_tokens.size(-1);
+                prob_tokens = prob_tokens.flatten()
+                top_res, top_idx = torch.topk(prob_tokens, beam_search)
 
                 beam_rows = top_idx // n_vocab
                 beam_cols = top_idx % n_vocab
@@ -491,19 +526,19 @@ class Transformer(nn.Module):
                 if return_probabilities:
                     probs = probs[beam_rows, :];
                 
-                next_code = None
+                next_token = None
 
             else:
                 raise ValueError("method = %r not in ['random', 'beam', 'max']" % method);
 
-            if end_code is not None and (next_code == end_code):
+            if end_token is not None and (next_token == end_token):
                 if verbose:
-                    print("Model called end of sequence at:", s, "/", max_tgt_length)
+                    print("Model called end of sequence at:", s, "/", max_sequence_length)
                 break
 
             s += 1
             if verbose and (s % verbose == 0):
-                print(s, "/", max_tgt_length)
+                print(s, "/", max_sequence_length)
 
         sequence = sequence[:, :s];
         if return_probabilities:
@@ -521,24 +556,40 @@ class Transformer(nn.Module):
         return result;
 
     @classmethod
-    def create(cls, n_src_vocab, n_tgt_vocab = None, n_layers = 6, d_model = 512, d_feedforward = 2048, n_heads = 8, max_sequence = 2048, dropout=0.1, dropout_attention = None, max_relative_position = True, value_relative_position = False):
+    def create(cls,
+               n_tokens     = None,
+               n_src_tokens = None, 
+               n_tgt_tokens = None,
+               n_layers = 6, 
+               d_model = 512, 
+               d_feedforward = 2048, 
+               n_heads = 8, 
+               max_sequence_length = 2048, 
+               dropout=0.1, 
+               dropout_attention = None, 
+               max_relative_position = True, 
+               add_relative_position_to_value = False):
         """Construct Transformer model from hyperparameters."""
-        if n_tgt_vocab is None:
-            n_tgt_vocab = n_src_vocab;
+        if n_tokens is not None:
+            n_src_tokens = n_tgt_tokens = n_tokens;
+        if n_tgt_tokens is None:
+            n_tgt_tokens = n_src_tokens;
         
         if max_relative_position is not None:
-            max_relative_position = max_sequence;
-            embedding = Embedding(n_src_vocab, d_model)
+            max_relative_position = max_sequence_length;
+            embedding = Embedding(n_src_tokens, d_model)
         else:
             position  = PositionalEncoding(d_model, dropout)
-            embedding = nn.Sequential(Embedding(n_src_vocab, d_model), position)
+            embedding = nn.Sequential(Embedding(n_src_tokens, d_model), position)
         
-        attention   = MultiHeadedAttention(d_model=d_model, n_heads=n_heads, max_relative_position=max_relative_position, value_relative_position=value_relative_position, dropout=dropout_attention)
+        attention   = MultiHeadedAttention(d_model=d_model, n_heads=n_heads, max_relative_position=max_relative_position, add_relative_position_to_value=add_relative_position_to_value, dropout=dropout_attention)
         feedforward = FeedForward(d_model, d_feedforward, dropout=dropout)
         
         encoder = Encoder(EncoderLayer(d_model, attention, feedforward, dropout), n_layers)
         
-        model = cls(encoder, embedding)
+        generator = Generator(d_model, n_tgt_tokens)
+        
+        model = cls(encoder, embedding, generator)
 
         model.reset_parameter()
         
@@ -625,18 +676,18 @@ class Optimizer:
 class SmoothLabelLoss(nn.Module):
     """Smooth labele loss"""
     
-    __constants__ = ['smoothing', 'n_vocab', 'ignore_code', 'reduction', 'input_is_logits']
+    __constants__ = ['smoothing', 'n_vocab', 'ignore_token', 'reduction', 'input_is_logits']
 
-    def __init__(self, n_vocab, smoothing = 0.1, ignore_code = None, reduction = 'mean', log_source = True, log_target = False, save_target_smoothed = False):
+    def __init__(self, n_tokens, smoothing = 0.1, ignore_token = None, reduction = 'mean', log_source = True, log_target = False, save_target_smoothed = False):
         super(SmoothLabelLoss, self).__init__()
         
         assert 0.0 <= smoothing <= 1.0
          
         self.smoothing = smoothing;
         self.confidence = 1 - smoothing;
-        self.n_vocab = n_vocab
+        self.n_tokens = n_tokens
         
-        self.ignore_code = ignore_code
+        self.ignore_token = ignore_token
         self.log_source = log_source
         self.log_target = log_target
         self.reduction=reduction
@@ -644,15 +695,15 @@ class SmoothLabelLoss(nn.Module):
         self.save_target_smoothed = save_target_smoothed
         self.target_smoothed = None
         
-        if self.ignore_code is not None:
-            self.uniform = 1/ (self.n_vocab - 1);
+        if self.ignore_token is not None:
+            self.uniform = 1/ (self.n_tokens - 1);
         else:
-            self.uniform = 1/ self.n_vocab;
+            self.uniform = 1/ self.n_tokens;
 
 
     def forward(self, src, tgt):
         if self.smoothing:
-           p = F.one_hot(tgt.long(), self.n_vocab).type(torch.float32)
+           p = F.one_hot(tgt.long(), self.n_tokens).type(torch.float32)
            q = self.uniform;
            tgt_smoothed = self.confidence * p + self.smoothing * q;
         else:
@@ -661,19 +712,19 @@ class SmoothLabelLoss(nn.Module):
         if self.save_target_smoothed:
             self.target_smoothed = tgt_smoothed;
 
-        # if self.ignore_code is not None:
+        # if self.ignore_token is not None:
         #     if self.smoothing:
-        #         mask = (tgt == self.ignore_code).unsqueeze(-2);
+        #         mask = (tgt == self.ignore_token).unsqueeze(-2);
         #         tgt_smoothed = tgt_smoothed.masked_fill(mask, 0)
         #     else:
-        #         keep = tgt != self.ignore_code;
+        #         keep = tgt != self.ignore_token;
         #         src = src[keep];
         #         tgt_smoothed = tgt_smoothed[keep];
     
         crit = self.criterion(src, tgt_smoothed)
         if self.reduction == 'mean':
-            if self.ignore_code is not None:
-                n = torch.sum(tgt != self.ignore_code)
+            if self.ignore_token is not None:
+                n = torch.sum(tgt != self.ignore_token)
             else:
                 n = tgt.numel()
             loss = crit.sum() / n
@@ -693,8 +744,8 @@ class SmoothLabelLoss(nn.Module):
 class SmoothKLDivLoss(SmoothLabelLoss):
     """Smooth KL divergence loss to use with Transformer training."""
  
-    def __init__(self, n_vocab, ignore_code = None, smoothing = 0.0, reduction = 'mean', log_source = True, log_target = False, save_target_smoothed = False): 
-        super(SmoothKLDivLoss, self).__init__(n_vocab=n_vocab, ignore_code=ignore_code, smoothing=smoothing, log_source=log_source, log_target=log_target, save_target_smoothed=save_target_smoothed);
+    def __init__(self, n_tokens, ignore_token = None, smoothing = 0.0, reduction = 'mean', log_source = True, log_target = False, save_target_smoothed = False): 
+        super(SmoothKLDivLoss, self).__init__(n_tokens=n_tokens, ignore_token=ignore_token, smoothing=smoothing, log_source=log_source, log_target=log_target, save_target_smoothed=save_target_smoothed);
         self.loss = nn.KLDivLoss(reduction='none', log_target=log_target);
 
     def criterion(self, src, tgt):
@@ -708,9 +759,9 @@ class SmoothKLDivLoss(SmoothLabelLoss):
 class SmoothCrossEntropyLoss(SmoothLabelLoss):
     """Smooth cross entropy loss to use with Transformer training."""
  
-    def __init__(self, n_vocab, ignore_code = None, smoothing = 0.0, reduction = 'mean', log_source = True, log_target = False, save_target_smoothed = False): 
-        super(SmoothCrossEntropyLoss, self).__init__(n_vocab=n_vocab, ignore_code=ignore_code, smoothing=smoothing, log_source=log_source, log_target=log_target, save_target_smoothed=save_target_smoothed);
-        self.loss = nn.CrossEntropyLoss(reduction = 'none', ignore_index=ignore_code);
+    def __init__(self, n_tokens, ignore_token = None, smoothing = 0.0, reduction = 'mean', log_source = True, log_target = False, save_target_smoothed = False): 
+        super(SmoothCrossEntropyLoss, self).__init__(n_tokens=n_tokens, ignore_token=ignore_token, smoothing=smoothing, log_source=log_source, log_target=log_target, save_target_smoothed=save_target_smoothed);
+        self.loss = nn.CrossEntropyLoss(reduction = 'none', ignore_index=ignore_token);
 
     def criterion(self, src, tgt):
         if not self.log_source:
@@ -725,68 +776,68 @@ Loss = SmoothCrossEntropyLoss
 
 class Batch:
     "Batch of data with mask for training."
-    def __init__(self, src, tgt=None, ignore_code = None):
+    def __init__(self, src, tgt=None, ignore_token = None):
         self.src = src
         self.tgt = tgt;
-        self.ignore_code = ignore_code;    
+        self.ignore_token = ignore_token;    
         self.n_batch = src.size(0);
 
     def src_mask(self, src = None):
         if src is None:
             src = self.src;
-        return self.mask(src, self.ignore_code);
+        return self.mask(src, self.ignore_token);
     
     def tgt_mask(self, tgt = None):
         if tgt is None:
             tgt = self.tgt;
-        return self.mask(tgt, self.ignore_code);
+        return self.mask(tgt, self.ignore_token);
     
     def src_attention_mask(self, src = None):
         if src is None:
             src = self.src; 
-        return self.attention_mask(src, self.ignore_code);
+        return self.attention_mask(src, self.ignore_token);
         
     def tgt_attention_mask(self, tgt = None):
         if tgt is None:
             tgt = self.tgt;
-        return self.attention_mask(tgt, self.ignore_code);
+        return self.attention_mask(tgt, self.ignore_token);
     
-    def n_src_codes(self, src = None):
+    def n_src_tokens(self, src = None):
         if src is None:
             src = self.src; 
-        return self.n_codes(src, self.ignore_code)
+        return self.n_tokens(src, self.ignore_token)
     
-    def n_tgt_codes(self, tgt = None):
+    def n_tgt_tokens(self, tgt = None):
         if tgt is None:
             tgt = self.tgt;
-        return self.n_codes(tgt, self.ignore_code) 
+        return self.n_tokens(tgt, self.ignore_token) 
     
     def batch_size(self):
         return self.src.shape[0];
         
     @staticmethod
-    def n_codes(matrix, ignore_code = None):
+    def n_tokens(matrix, ignore_token = None):
         if matrix is None:
             return 0;
-        if ignore_code is not None:
-            return (matrix != ignore_code).data.sum()
+        if ignore_token is not None:
+            return (matrix != ignore_token).data.sum()
         else:
             return matrix.numel(); 
     
     @staticmethod
-    def mask(matrix, ignore_code = None):
-        if ignore_code is not None:
-            mask = (matrix == ignore_code).data
+    def mask(matrix, ignore_token = None):
+        if ignore_token is not None:
+            mask = (matrix == ignore_token).data
         else:
             mask = None;
             #mask = torch.zeros((1,1), dtype=torch.bool);  
         return mask
 
     @staticmethod
-    def attention_mask(matrix, ignore_code = None, with_attention_heads = True):
+    def attention_mask(matrix, ignore_token = None, with_attention_heads = True):
         # attention mask is (..., ref/query position, attend to position)
-        if ignore_code is not None:
-            mask = (matrix == ignore_code).data.unsqueeze(-2) # shape=(batch_size, 1, seq_len)
+        if ignore_token is not None:
+            mask = (matrix == ignore_token).data.unsqueeze(-2) # shape=(batch_size, 1, seq_len)
         else:
             mask = None;
             #mask = torch.zeros((1,1), dtype=torch.bool).unsqueeze(0);
@@ -797,25 +848,9 @@ class Batch:
   
     def __repr__(self):
         r = "Batch(%d, %d)" % (self.src.shape[0], self.src.shape[1]);
-        if self.ignore_code:
-            r += '[%d]' % self.ignore_code;
+        if self.ignore_token:
+            r += '[%d]' % self.ignore_token;
         return r;
 
 
-# class Generator(nn.Module):
-#     def __init__(self, d_model, n_tgt_vocab, softmax = False, log_probabilities = False):
-#         super(Generator, self).__init__()
-#         self.linear = nn.Linear(d_model, n_tgt_vocab);
-#         if softmax is True:
-#             if log_probabilities:
-#                 self.softmax = F.log_softmax;
-#             else:
-#                 self.softmax = F.softmax;         
-#         else:
-#             self.softmax = False;
 
-#     def forward(self, x):
-#         x = self.linear(x);
-#         if self.softmax:
-#             x = self.softmax(x, dim=-1);
-#         return x;

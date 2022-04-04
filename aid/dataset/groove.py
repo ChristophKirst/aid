@@ -19,9 +19,9 @@ from torch.utils.data import Dataset, DataLoader
 
 import aid.dataset.midi_encoder as encoder
 
-CODE_PAD  = encoder.CODE_PAD
-CODE_END  = encoder.CODE_END
-CODE_SIZE = encoder.CODE_SIZE
+TOKEN_PAD  = encoder.TOKEN_PAD
+TOKEN_END  = encoder.TOKEN_END
+N_TOKENS   = encoder.N_TOKENS
 
 from aid.model.transformer import Batch
 
@@ -32,13 +32,13 @@ class GrooveDataset(Dataset):
     https://magenta.tensorflow.org/datasets/groove
     """
 
-    def __init__(self, directory, max_length = None, random_sequence = True, dtype = None, representation = 'code'):
+    def __init__(self, directory, max_sequence_length = None, random_sequence_start = True, dtype = None, encoding = 'tokens'):
         super(GrooveDataset, self).__init__()
         
-        self.directory       = directory
-        self.max_length      = max_length
-        self.random_sequence = random_sequence
-        self.representation  = representation
+        self.directory             = directory
+        self.max_sequence_length   = max_sequence_length
+        self.random_sequence_start = random_sequence_start
+        self.encoding              = encoding
 
         data_files = [os.path.join(directory, f) for f in os.listdir(directory)];     
         data_files = natsort.natsort.natsorted(data_files);
@@ -54,12 +54,12 @@ class GrooveDataset(Dataset):
         """Returns input and target sequence"""
         
         i_stream = open(self.data_files[idx], "rb")
-        code = torch.tensor(pickle.load(i_stream), dtype=torch.long, device=torch.device("cpu"))
+        sequence = torch.tensor(pickle.load(i_stream), dtype=torch.long, device=torch.device("cpu"))
         i_stream.close()
 
-        src, tgt = generate_source_target(code, self.max_length, self.random_sequence)
+        src, tgt = generate_source_target(sequence, self.max_sequence_length, self.random_sequence_start)
 
-        if self.representation == 'midi':
+        if self.encoding == 'midi':
             src, tgt = encoder.decode_midi(src), encoder.decode_midi(tgt);
            
         return src, tgt
@@ -68,45 +68,45 @@ class GrooveDataset(Dataset):
         return "GrooveDataset[%d]" % (self.__len__());
 
 
-def generate_source_target(code, max_length = None, random_sequence = None, start_sequence = 0, ignore_code = CODE_PAD):
+def generate_source_target(sequence, max_sequence_length = None, random_sequence_start = None, sequence_offset = 0, ignore_token = TOKEN_PAD):
     """midi code to source and target"""
 
-    code = code[start_sequence:]; 
-    code_length     = len(code)
+    sequence = sequence[sequence_offset:]; 
+    sequence_length     = len(sequence)
     
-    if max_length is None:
-        max_length = code_length;
-    max_length = min(max_length, code_length)
+    if max_sequence_length is None:
+        max_sequence_length = sequence_length;
+    max_sequence_length = min(max_sequence_length, sequence_length)
         
-    src = torch.full((max_length, ), ignore_code, dtype=torch.long, device=torch.device("cpu"))
-    tgt = torch.full((max_length, ), ignore_code, dtype=torch.long, device=torch.device("cpu"))
+    src = torch.full((max_sequence_length, ), ignore_token, dtype=torch.long, device=torch.device("cpu"))
+    tgt = torch.full((max_sequence_length, ), ignore_token, dtype=torch.long, device=torch.device("cpu"))
     
-    total_length    = max_length + 1 # performing seq2seq
+    total_length    = max_sequence_length + 1 # performing seq2seq
 
-    if (code_length == 0):
+    if (sequence_length == 0):
         return src, tgt
 
-    if (code_length < total_length):
-        src[:]   = code
-        tgt[:code_length-1] = code[1:]
-        tgt[code_length-1]  = ignore_code
+    if (sequence_length < total_length):
+        src[:]   = sequence
+        tgt[:sequence_length-1] = sequence[1:]
+        tgt[sequence_length-1]  = ignore_token
     else:
-        if random_sequence is not None:
-            start = random.randint(0, code_length - total_length)
+        if random_sequence_start is not None:
+            start = random.randint(0, sequence_length - total_length)
         else:
             start = 0
 
         end = start + total_length
 
-        data = code[start:end]
+        data = sequence[start:end]
 
-        src = data[:max_length]
+        src = data[:max_sequence_length]
         tgt = data[1:total_length]
 
     return src, tgt
 
 
-def collate_batch(batch, ignore_code = CODE_PAD):
+def collate_batch(batch, ignore_token = TOKEN_PAD):
     """Collate a set of data to a batch tensor.
     
     Note
@@ -117,14 +117,14 @@ def collate_batch(batch, ignore_code = CODE_PAD):
     batch_size = len(batch);
     max_length = max([len(s) for s,t in batch])
     
-    src = torch.full((batch_size, max_length), ignore_code, dtype=torch.long, device=torch.device("cpu"))
-    tgt = torch.full((batch_size, max_length), ignore_code, dtype=torch.long, device=torch.device("cpu"))
+    src = torch.full((batch_size, max_length), ignore_token, dtype=torch.long, device=torch.device("cpu"))
+    tgt = torch.full((batch_size, max_length), ignore_token, dtype=torch.long, device=torch.device("cpu"))
 
     for i,b in enumerate(batch):
         n = len(b[0]);
         src[i,:n], tgt[i,:n] = b;
 
-    return Batch(src, tgt, ignore_code=ignore_code);
+    return Batch(src, tgt, ignore_token=ignore_token);
 
 
 def train_validate_test_directories(directory):
@@ -134,27 +134,27 @@ def train_validate_test_directories(directory):
     return directory_train, directory_validate, directory_test
 
 
-def train_validate_test_datasets(directory, max_length = None, random_sequence = None):
+def train_validate_test_datasets(directory, max_sequence_length = None, random_sequence_start = None):
     """Create datasets for training"""
 
     directory_train, directory_validate, directory_test = train_validate_test_directories(directory)
 
-    dataset_train    = GrooveDataset(directory_train,     max_length, random_sequence)
-    dataset_validate = GrooveDataset(directory_validate,  max_length, random_sequence)
-    dataset_test     = GrooveDataset(directory_test,      max_length, random_sequence)
+    dataset_train    = GrooveDataset(directory_train,     max_sequence_length, random_sequence_start)
+    dataset_validate = GrooveDataset(directory_validate,  max_sequence_length, random_sequence_start)
+    dataset_test     = GrooveDataset(directory_test,      max_sequence_length, random_sequence_start)
 
     return dataset_train, dataset_validate, dataset_test
 
 
-def train_test_datasets(directory, max_length = None, random_sequence = None):
+def train_test_datasets(directory, max_length = None, random_sequence_start = None):
     """Create datasets for training"""
-    dataset_train, _, dataset_test =  train_validate_test_datasets(directory=directory, max_length=max_length, random_sequence=random_sequence)
+    dataset_train, _, dataset_test =  train_validate_test_datasets(directory=directory, max_length=max_length, random_sequence_start=random_sequence_start)
     return dataset_train, dataset_test
 
 
-def train_validate_test_dataloaders(directory, max_length = None, random_sequence = None, batch_size = 10, shuffle = False, **kwargs):
+def train_validate_test_dataloaders(directory, max_sequence_length = None, random_sequence_start = None, batch_size = 10, shuffle = False, **kwargs):
     """Create data loders for training"""
-    dataset_train, dataset_validate, dataset_test =  train_validate_test_datasets(directory=directory, max_length=max_length, random_sequence=random_sequence);
+    dataset_train, dataset_validate, dataset_test = train_validate_test_datasets(directory=directory, max_sequence_length=max_sequence_length, random_sequence_start=random_sequence_start);
      
     loader_train   = DataLoader(dataset_train,     batch_size=batch_size, shuffle=shuffle, collate_fn=collate_batch, **kwargs)
     loder_validate = DataLoader(dataset_train,     batch_size=batch_size, shuffle=False,   collate_fn=collate_batch, **kwargs)
@@ -163,9 +163,9 @@ def train_validate_test_dataloaders(directory, max_length = None, random_sequenc
     return loader_train, loder_validate, loader_test
 
 
-def train_test_dataloaders(directory, max_length = None, random_sequence = None, batch_size = 10, shuffle = False, **kwargs):
+def train_test_dataloaders(directory, max_sequence_length = None, random_sequence_start = None, batch_size = 10, shuffle = False, **kwargs):
     """Create data loaders for training"""
-    loader_train, _, loader_test =  train_validate_test_dataloaders(directory=directory, max_length=max_length, random_sequence=random_sequence, batch_size=batch_size, shuffle=shuffle, **kwargs)
+    loader_train, _, loader_test =  train_validate_test_dataloaders(directory=directory, max_sequence_length=max_sequence_length, random_sequence_start=random_sequence_start, batch_size=batch_size, shuffle=shuffle, **kwargs)
     return loader_train, loader_test
 
 

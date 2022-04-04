@@ -17,27 +17,27 @@ from torch.utils.data import Dataset, DataLoader
 
 from aid.dataset.groove import generate_source_target, collate_batch
 
-CODE_SIZE = 128;
-CODE_PAD = CODE_SIZE-1;
+N_TOKENS = 128;
+TOKEN_PAD = N_TOKENS-1;
 
 class CopyDataset(Dataset):
 
-    def __init__(self, max_length = 32, code_size = CODE_SIZE, ignore_code = CODE_PAD, n_samples = 500, data_length = 128, random_sequence = True):
+    def __init__(self, max_sequence_length = 32, n_tokens = N_TOKENS, ignore_token = TOKEN_PAD, n_samples = 500, data_length = 128, random_sequence_start = True):
         super(CopyDataset, self).__init__()
         
-        self.max_length      = max_length;
-        self.code_siZe       = code_size;
-        self.random_sequence = random_sequence;
-        self.ignore_code     = ignore_code;
+        self.max_sequence_length      = max_sequence_length;
+        self.random_sequence_start    = random_sequence_start;
+        self.n_tokens                 = n_tokens;
+        self.ignore_token             = ignore_token;
         
         if data_length is None:
-            data_length = max_length;
-        self.data = torch.randint(0, code_size, (n_samples, data_length));
+            data_length = max_sequence_length;
+        self.data = torch.randint(0, n_tokens, (n_samples, data_length));
         
         #make sure we do have pad symbols
-        if self.ignore_code:
-            idx = self.data == self.ignore_code;
-            if self.ignore_code == 0:
+        if self.ignore_token:
+            idx = self.data == self.ignore_token;
+            if self.ignore_token == 0:
                 replace = 1;
             else:
                 replace = 0;     
@@ -51,8 +51,8 @@ class CopyDataset(Dataset):
     def __getitem__(self, idx):
         """Returns input and target sequence"""
         
-        code = self.data[idx]
-        src, _ = generate_source_target(code, self.max_length, self.random_sequence, ignore_code = self.ignore_code)
+        tokens = self.data[idx]
+        src, _ = generate_source_target(tokens, self.max_sequence_length, self.random_sequence_start, ignore_token = self.ignore_token)
 
         return src, src
 
@@ -65,9 +65,9 @@ class ForwardDataset(CopyDataset):
     def __getitem__(self, idx):
         """Returns input and target sequence"""
         
-        code = self.data[idx]
+        tokens = self.data[idx]
         #reverse of standard src,tgt
-        tgt, src = generate_source_target(code, self.max_length + 1, self.random_sequence, ignore_code = self.ignore_code)
+        tgt, src = generate_source_target(tokens, self.max_sequence_length + 1, self.random_sequence_start, ignore_token = self.ignore_token)
         src = src[:-1];
         tgt = tgt[:-1];
         tgt[0] = src[0];
@@ -75,47 +75,11 @@ class ForwardDataset(CopyDataset):
         return src, tgt
 
 
-class SeriesDataset(Dataset):
-
-    def __init__(self, max_length = 32, code_size = CODE_SIZE, ignore_code = CODE_PAD, n_samples = 500, data_length = 128, random_sequence = True):
-        super(CopyDataset, self).__init__()
-        
-        self.max_length      = max_length;
-        self.code_siZe       = code_size;
-        self.random_sequence = random_sequence;
-        self.ignore_code     = ignore_code;
-        
-        if data_length is None:
-            data_length = max_length;
-        self.data = torch.randint(0, code_size, (n_samples, data_length));
-        
-        #make sure we do have pad symbols
-        if self.ignore_code:
-            idx = self.data == self.ignore_code;
-            if self.ignore_code == 0:
-                replace = 1;
-            else:
-                replace = 0;     
-            self.data[idx] = replace;
-        
-    def __len__(self):
-        """number of data files"""
-        return self.data.shape[0];
-
-
-    def __getitem__(self, idx):
-        """Returns input and target sequence"""
-        
-        code = self.data[idx]
-        src, _ = generate_source_target(code, self.max_length, self.random_sequence, ignore_code = self.ignore_code)
-
-        return src, src
-
 #%
 
 import functools as ft
 
-collate_fn = ft.partial(collate_batch, ignore_code = CODE_PAD)
+collate_fn = ft.partial(collate_batch, ignore_token = TOKEN_PAD)
 dataset = CopyDataset()
 data = DataLoader(dataset, batch_size = 10, shuffle = True, collate_fn = collate_fn);
 
@@ -132,9 +96,9 @@ plt.title('target')
 
 #% create model
 
-from aid.model.run import create_model
+from aid.model.run import create_model, create_optimizer
 
-model = create_model(n_src_vocab=CODE_SIZE, dropout = None)
+model = create_model(n_tokens=N_TOKENS, dropout = None)
 
 #% generate untraiined sequence
 
@@ -150,6 +114,11 @@ plt.imshow([src[0].data.numpy(), tgt[0].data.numpy()], origin = 'lower')
 plt.title('src vs max likely tgt')
 
 
+optimizer = create_optimizer(model=model, warmup = 4000, factor = 1);
+learning_rate = np.array([[e, optimizer.rate(epoch=e)] for e in range(0, 10000, 10)]).T;
+plt.figure(3); plt.clf();
+plt.plot(learning_rate[0], learning_rate[1])
+
 #%% train
 
 from aid.model.run import train
@@ -158,7 +127,7 @@ data_eval = DataLoader(dataset, batch_size = 32, shuffle = False, collate_fn = c
 
 model, optimizer, loss = train( epochs = 25,
                                 model_parameter = dict(n_layers = 1),
-                                loss_parameter = dict(n_src_vocab = CODE_SIZE, ignore_code = CODE_PAD),
+                                loss_parameter  = dict(n_tokens = N_TOKENS, ignore_token = TOKEN_PAD),
                                 data_train=data, n_train_batches = 32,
                                 data_eval_train=data_eval, data_eval_test=data_eval, n_evaluate_test_batches = 5, n_evaluate_train_batches = 0,
                                 use_tensorboard = True,
@@ -174,7 +143,6 @@ model.eval();
 
 y = model(src)
 _, tgt = torch.max(y, dim = -1)     
-
 
 plt.figure(2); plt.clf();
 plt.imshow([src[0].data.numpy(), tgt[0].data.numpy()], origin = 'lower')
@@ -202,7 +170,7 @@ plt.title('tgt')
 #%% train forward model
 model, optimizer, loss = train( epochs = 50,
                                 model_parameter = dict(n_layers = 1),
-                                loss_parameter = dict(n_src_vocab = CODE_SIZE, ignore_code = CODE_PAD),
+                                loss_parameter = dict(n_tokens = N_TOKENS, ignore_token = TOKEN_PAD),
                                 data_train=data, n_train_batches = 32,
                                 data_eval_train=data_eval, data_eval_test=data_eval, n_evaluate_test_batches = 5, n_evaluate_train_batches = 0,
                                 use_tensorboard = True,
@@ -227,7 +195,7 @@ seq_len = attn.shape[0]
 
 plt.figure(2); plt.clf();
 plt.subplot(2,seq_len,(1,seq_len//2));
-p = F.softmax(y[0][:,:CODE_SIZE], dim=-1);
+p = F.softmax(y[0][:,:N_TOKENS], dim=-1);
 plt.imshow(p.data.T.numpy(), origin = 'lower')
 plt.title('probabilities')
 plt.subplot(2,seq_len,(seq_len//2+1,seq_len))
@@ -258,7 +226,7 @@ plt.tight_layout()
 primer = batch.src[0][:10];
 
 model.eval();
-sequence_trained, probs_trained = model.generate(primer = primer, max_tgt_length = 32, method = 'max', verbose = True, ignore_code = CODE_PAD, max_code = CODE_SIZE, return_probabilities = True)
+sequence_trained, probs_trained = model.generate(primer = primer, max_sequence_length = 32, method = 'max', verbose = True, ignore_token = TOKEN_PAD, n_tokens = N_TOKENS, return_probabilities = True)
 
 plt.figure(4); plt.clf();
 plt.subplot(2,1,1)
@@ -266,7 +234,6 @@ plt.imshow([batch.src[0].data.numpy(), sequence_trained.data.numpy()], origin = 
 plt.subplot(2,1,2)
 p = probs_trained.data.numpy().T;
 plt.imshow(p, origin='lower', aspect = 'auto', clim= (0, np.percentile(p, 99.5)))
-
 
 
 #%% train epoch - debug
@@ -282,7 +249,7 @@ loss = create_loss()
 
 #%%
 
-ll = train_epoch(0, model, data, loss, optimizer, n_batches = 25, verbose = 1)
+ll = train_epoch(0, model, data, loss, optimizer, batch_size = 25, verbose = 1)
 
 print(ll)
 
@@ -339,7 +306,7 @@ for i,dataset in enumerate(groove.train_validate_test_datasets(directory_data)):
 
 #%%
 
-data_train, data_validate, data_test = groove.train_validate_test_dataloaders(directory=directory_data, max_length = 2048, batch_size = 10)
+data_train, data_validate, data_test = groove.train_validate_test_dataloaders(directory=directory_data, max_sequence_length = 2048, batch_size = 10)
 
 #%%
 
@@ -359,7 +326,7 @@ for b, batch in enumerate(data_train):
 
 #%%
 
-from aid.dataset.groove import CODE_SIZE
+from aid.dataset.groove import N_TOKENS
 from aid.model.run import create_model
 
 model = create_model()
@@ -374,8 +341,8 @@ src_mask = batch.src_mask()[idx]
 
 y = model(src, src_mask)
 
-src_code = src[0].data.numpy()
-code = model.decode(y, method='max', max_code = CODE_SIZE)[0].data.numpy()
+src_tokens = src[0].data.numpy()
+tgt_tokens = model.decode(y, method='max')[0].data.numpy()
 
 layer = 0;
 head  = 0;
@@ -386,9 +353,9 @@ attn = model.encoder.layers[layer].attention.attention[0,head].data.numpy()
 from aid.dataset.midi_encoder import decode_midi
 from aid.dataset.midi_utils import plot
 
-plot(src_code)
+plot(src_tokens)
 
-events = decode_midi(src_code, return_events=True)
+events = decode_midi(src_tokens, return_events=True)
 print(events)
 
 #%%
@@ -397,8 +364,7 @@ import matplotlib.pyplot as plt
 from aid.dataset.midi_utils import plot_midi_bars
 
 plt.figure(10); plt.clf();
-plot_midi_bars(src_code, attention=attn[-1])
-
+plot_midi_bars(src_tokens, attention=attn[-1])
 
 
 
@@ -414,7 +380,7 @@ from aid.model.run import train
 
 
 #%%
-train(epochs=100,
+train(epochs=2,
       n_train_batches = 5,
       n_evaluate_train_batches  = 0,
       n_evaluate_test_batches   = 1,
@@ -448,29 +414,17 @@ train(epochs=100,
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 #%% model
 
-import aid.model.music_transformer as mt
-from aid.model.run import create_model, CODE_SIZE
+import aid.model.transformer as tf
+from aid.model.run import create_model, N_TOKENS
 
-model = mt.Transformer.create(n_src_vocab=CODE_SIZE)
+model = tf.Transformer.create(n_tokens=N_TOKENS)
 model = create_model()
 
 #%% evluation and maksing
 
-data_train, data_validate, data_test = groove.train_validate_test_dataloaders(directory=directory_data, max_length = 2048, batch_size = 10)
+data_train, data_validate, data_test = groove.train_validate_test_dataloaders(directory=directory_data, max_sequence_length = 2048, batch_size = 10)
 batch = next(iter(data_train))
 
 tgt = batch.tgt;
@@ -491,6 +445,7 @@ plt.imshow(tgt.detach().numpy())
 
 
 #%%
+
 model.eval();
 
 emb = model.embedding(src)
@@ -501,26 +456,7 @@ encl = encode_layer(emb, src_mask)
 
 enc = model.encoder(src, src_mask)
 
-
-
 out = model(src, src_mask)
-
-
-#%% learn simple copy forward task
-
-n_max = model.CODE_SIZE;
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

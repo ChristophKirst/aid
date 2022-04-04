@@ -12,9 +12,7 @@ __author__    = 'Christoph Kirst <christoph.kirst.ck@gmail.com>'
 __copyright__ = 'Copyright © 2022 by Christoph Kirst'
 
 
-
 import time
-
 import os
 import csv
 
@@ -22,7 +20,7 @@ import torch
 import torch.nn
 
 from aid.model.transformer import Transformer, Optimizer, Loss
-from aid.dataset.groove import train_test_dataloaders, CODE_SIZE, CODE_PAD, CODE_END
+from aid.dataset.groove import train_test_dataloaders, N_TOKENS, TOKEN_PAD, TOKEN_END
 import aid.dataset.midi_encoder as encoder
 
 import aid.dataset.midi_utils as utils;
@@ -38,26 +36,40 @@ def get_device():
         device = torch.device("cpu");
     return device
 
-def set_device(obj, device = None):
+def set_device(obj, device = None, multi_gpu = False, device_ids = None, output_device = None):
+    if device_ids is not None:
+        multi_gpu = True;
     if device is None:
         device = get_device()
+    if multi_gpu and torch.cuda.device_count() > 1:
+        if isinstance(device_ids, int):
+            device_ids = list(range(device_ids));
+            if output_device is None:
+                output_device = device_ids[0]   
+        obj = torch.nn.DataParallel(obj, device_ids=device_ids, output_device=output_device);
     obj = obj.to(device);
     return obj;
 
 
 ### Object creation
 
-def create_model(n_src_vocab = CODE_SIZE, device = None, **kwargs):
-    model = Transformer.create(n_src_vocab=n_src_vocab, **kwargs);
-    model = set_device(model, device=device);
+def create_model(device = None, multi_gpu = False, device_ids = None, output_device = None, **kwargs):
+    for k,v in zip(['n_tokens'], [N_TOKENS]):
+        if k not in kwargs.keys():
+            kwargs[k] = v;
+    model = Transformer.create(**kwargs);
+    model = set_device(model, device=device, multi_gpu=multi_gpu, device_ids=device_ids, output_device=output_device);
     return model;
     
 def create_optimizer(model, **kwargs):
     optimizer = Optimizer.create(model=model, **kwargs);
     return optimizer
 
-def create_loss(n_src_vocab = CODE_SIZE, ignore_code = CODE_PAD, device = None, **kwargs):
-    loss = Loss(n_vocab=n_src_vocab, ignore_code=ignore_code, **kwargs);
+def create_loss(device = None, **kwargs):
+    for k,v in zip(['n_tokens', 'ignore_token'], [N_TOKENS, TOKEN_PAD]):
+        if k not in kwargs.keys():
+            kwargs[k] = v;
+    loss = Loss(**kwargs);
     loss = set_device(loss, device=device);
     return loss;
 
@@ -81,7 +93,7 @@ def train_epoch(epoch, model, data, loss, optimizer, n_batches = None, verbose =
         time_start = time.time();
         
     loss_total = 0.0;
-    code_total = 0;
+    tokens_total = 0;
     
     for b, batch in enumerate(data):
         if b >= n_batches:
@@ -97,7 +109,7 @@ def train_epoch(epoch, model, data, loss, optimizer, n_batches = None, verbose =
         src = batch.src.to(device)
         src_mask = batch.src_mask(src);
         tgt = batch.tgt.to(device);
-        nrm = batch.n_tgt_codes();
+        n_tokens = batch.n_tgt_tokens();
   
         fwd = model(src, src_mask)
          
@@ -106,7 +118,7 @@ def train_epoch(epoch, model, data, loss, optimizer, n_batches = None, verbose =
             return batch;
   
         out = loss(fwd.contiguous().view(-1, fwd.size(-1)), 
-                   tgt.contiguous().view(-1)) / nrm
+                   tgt.contiguous().view(-1)) / n_tokens
         
         if torch.any(torch.isnan(out)):
             print('Nans encountered in loss')
@@ -118,7 +130,7 @@ def train_epoch(epoch, model, data, loss, optimizer, n_batches = None, verbose =
             optimizer.step()
         
         loss_total += float(out);
-        code_total += float(nrm);
+        tokens_total += float(n_tokens);
         
         if verbose and ((b+1) % verbose == 0):
             time_batch_end = time.time()
@@ -128,14 +140,14 @@ def train_epoch(epoch, model, data, loss, optimizer, n_batches = None, verbose =
             print('training: epoch %d  batch %d/%d (%d)' % (epoch+1, b+1, n_batches, len(data)))
             print('batch_size, sequence_length = %d, %d'%  (src.shape[0], src.shape[1]))
             print("lrate:    %r" % optimizer.rate())
-            print("loss:     %r" % (float(out) / float(nrm)))
+            print("loss:     %r" % (float(out) / float(n_tokens)))
             print("time (s): %r" % time_batch_total)
             if separator: print(separator)
 
     if optimizer:
         optimizer.step_epoch();
 
-    loss_mean = loss_total / code_total;
+    loss_mean = loss_total / tokens_total;
 
     if verbose:
         time_end = time.time();
@@ -167,9 +179,9 @@ def evaluate_model(model, data, loss, n_batches = None, verbose = False, separat
     if n_batches == 0:
         return float('inf'), 0;
    
-    loss_total = 0.0
-    acc_total  = 0.0
-    codes_total = 0;
+    loss_total   = 0.0
+    acc_total    = 0.0
+    tokens_total = 0;
     
     with torch.set_grad_enabled(False):
         for b, batch in enumerate(data):
@@ -182,19 +194,19 @@ def evaluate_model(model, data, loss, n_batches = None, verbose = False, separat
             src = batch.src.to(device);
             src_mask = batch.src_mask(src);
             tgt = batch.tgt.to(device)
-            nrm = float(batch.n_tgt_codes());
+            n_tokens = float(batch.n_tgt_tokens());
 
             fwd = model(src, src_mask)
 
             acc = float(compute_accuracy(fwd, tgt, src_mask));
-            acc_total += acc * nrm;
+            acc_total += acc * n_tokens;
             
             out = loss.forward(fwd.contiguous().view(-1, fwd.size(-1)), 
-                               tgt.contiguous().view(-1)) / nrm
+                               tgt.contiguous().view(-1)) / n_tokens
   
             out = float(out);
             loss_total += out;
-            codes_total += nrm
+            tokens_total += n_tokens
 
             if verbose and ((b+1) % verbose == 0):
                 time_batch_end = time.time()
@@ -202,13 +214,14 @@ def evaluate_model(model, data, loss, n_batches = None, verbose = False, separat
                   
                 if separator: print(separator)
                 print('evaluation:  batch %d/%d' % (b+1, len(data)))
-                print("loss:     %r" % (out / nrm))
+                print('batch_size, sequence_length = %d, %d'%  (src.shape[0], src.shape[1]))
+                print("loss:     %r" % (out / n_tokens))
                 print("accuracy: %r" % acc)
                 print("time (s): %r" % time_batch_total)
                 if separator: print(separator)  
         
-        loss_mean = loss_total / codes_total
-        acc_mean  = acc_total / codes_total
+        loss_mean = loss_total / tokens_total
+        acc_mean  = acc_total / tokens_total
 
     if verbose:
         time_end = time.time()
@@ -267,7 +280,7 @@ tensorboard_directory    = 'tensorboard'
 
 generate_directory        = 'generate'
 generate_midi_file_name   = 'generated_%d_%d.mid'  # primer, n_primer
-generate_code_file_name   = 'generated_%d_%d.npy'  # primer, n_primer
+generate_token_file_name  = 'generated_%d_%d.npy'  # primer, n_primer
 generate_primer_file_name = 'primer_%d_%d.npy'
 
 
@@ -571,8 +584,10 @@ def train(
 
 
 def generate(
+        max_sequence_length = 512,
+        
         primer = None,
-        n_primer = 10, 
+        max_primer_tokens = 10, 
         generate_parameter = dict(),
         
         model = None,
@@ -589,12 +604,12 @@ def generate(
         plot = False,
         play = False,
         
-        save_midi = False,
-        save_code = False,
+        save_midi   = False,
+        save_tokens = False,
         save_primer = False,
         
         return_midi = True,
-        return_code = False,
+        return_tokens = False,
         return_probabilities = False,
         
         directory      = None,
@@ -603,9 +618,8 @@ def generate(
         verbose = False
     ):
     
-    if save_midi or save_code or save_primer:
+    if save_midi or save_tokens or save_primer:
         directory_generate = directory_default(base_directory=base_directory, directory=directory, sub_directory=generate_directory, create=True);
-    
         if verbose:
             print('generate: directory: %s' % directory_generate);
     
@@ -628,37 +642,36 @@ def generate(
             primer = np.rand.randrange(0,len(data));
         primer_save = primer;
         primer = data[primer].src
-        max_length = np.where(primer == CODE_PAD)[0];
-        if len(max_length) > 0:
-            primer = primer[:max_length[0]];
+        n_primer_tokens = np.where(primer == TOKEN_PAD)[0];
+        if len(n_primer_tokens) > 0:
+            primer = primer[:n_primer_tokens[0]];
     elif isinstance(primer, utils.pm.PrettyMIDI):
         primer = encoder.encode_midi(primer)
     
-    n_primer = min(len(primer), n_primer);
-    primer = primer[:n_primer];     
+    n_primer_tokens = min(len(primer), max_primer_tokens);
+    primer = primer[:n_primer_tokens];     
 
     if save_primer is not None:
         if not isinstance(save_primer, str):
-            primer_midi_file = generate_primer_file_name % (primer_save, n_primer);
+            primer_midi_file = generate_primer_file_name % (primer_save, n_primer_tokens);
         midi = encoder.decode_midi(primer);
         midi.write(os.path.join(directory_generate, primer_midi_file))
         
     if plot_primer:
         utils.plot(primer);
     
-    generate_parameter.update(
-        end_code = CODE_END,
-        pad_code = CODE_PAD,
-    );
+    for k,v in zip(['max_sequence_length', 'end_token', 'pad_token'], [max_sequence_length, TOKEN_END, TOKEN_PAD]):
+       if k not in generate_parameter.keys():
+           generate_parameter[k] = v;
     
     if return_probabilities:
-        sequence, probabilities = model.generate(primer, return_probabilities=return_probabilities, **generate_parameter);
+        tokens, probabilities = model.generate(primer, return_probabilities=return_probabilities, **generate_parameter);
     else:
-        sequence = model.generate(primer, **generate_parameter);
+        tokens = model.generate(primer, **generate_parameter);
+    tokens = tokens[0].cpu().detach().numpy();
     
-    #return model, primer, sequence;
-    code = sequence[0].cpu().detach().numpy();
-    midi = encoder.decode_midi(code);
+    if return_midi or plot or play:
+        midi = encoder.decode_midi(tokens);
     
     if plot:
         utils.plot(midi);
@@ -668,8 +681,8 @@ def generate(
     result = tuple();
     if return_midi:
         result += (midi,)
-    if return_code:
-        result += (code,);
+    if return_tokens:
+        result += (tokens,);
     if return_probabilities:
         result += (probabilities[0],);
     if len(result) == 1:
