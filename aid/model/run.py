@@ -26,7 +26,11 @@ import aid.dataset.midi_encoder as encoder
 import aid.dataset.midi_utils as utils;
 
 
-### GPU detection
+### GPU computing
+
+class DataParallel(torch.nn.DataParallel):
+    def __getattr__(self, name):
+        return getattr(self.module, name)
 
 def get_device():
     if torch.cuda.device_count() > 0:
@@ -46,7 +50,7 @@ def set_device(obj, device = None, multi_gpu = False, device_ids = None, output_
             device_ids = list(range(device_ids));
             if output_device is None:
                 output_device = device_ids[0]   
-        obj = torch.nn.DataParallel(obj, device_ids=device_ids, output_device=output_device);
+        obj = DataParallel(obj, device_ids=device_ids, output_device=output_device);
     obj = obj.to(device);
     return obj;
 
@@ -375,7 +379,8 @@ def save_model(model, sink = None, base_directory = None, directory = None, verb
 ### User control
 
 def train(
-        epochs,     
+        epochs,  
+        
         model = None,
         model_parameter = dict(),
         

@@ -86,7 +86,11 @@ model, optimizer, loss = train(
       n_evaluate_train_batches  = 0,
       n_evaluate_test_batches   = 1,
       
-      data_parameter = dict(batch_size=5, max_sequence_length=512),
+      model_parameter = dict(multi_gpu=True),
+      
+      data_parameter = dict(batch_size=8, max_sequence_length=512),
+      
+      optimizer_parameter = dict(factor = 0.75, warmup = 4000),
       
       base_directory=directory_base,
       data_directory=directory_data,
