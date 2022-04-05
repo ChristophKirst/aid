@@ -60,6 +60,7 @@ directory_data = '/global/home/users/ckirst/Media/Music/AImedia/MLMusic/Data/gro
 directory_base = '/global/home/users/ckirst/Media/Music/AImedia/MLMusic/Results/aid';
 
 
+
 #%% full run
 model, optimizer, loss = train(
       epochs=10000,
@@ -69,6 +70,8 @@ model, optimizer, loss = train(
       
       data_parameter = dict(batch_size=5, max_sequence_length=512),
       
+      optimizer_parameter = dict(factor = 0.75, warmup = 4000),
+      
       base_directory=directory_base,
       data_directory=directory_data,
       
@@ -77,6 +80,7 @@ model, optimizer, loss = train(
       clean_directories = False
      )
 
+#%%
 
 model, optimizer, loss = train(
       epochs=2,
@@ -86,7 +90,7 @@ model, optimizer, loss = train(
       
       model_parameter = dict(multi_gpu=True),
       
-      data_parameter = dict(batch_size=8, max_sequence_length=512),
+      data_parameter = dict(batch_size=8, max_sequence_length=32),
       
       optimizer_parameter = dict(factor = 0.75, warmup = 4000),
       
@@ -120,4 +124,70 @@ train(epochs=100,
      )
 
 
+
+
+#%% generate beats
+
+from aid.model.run import generate
+
+data_directory = '/home/ckirst/Media/Music/AImedia/MLMusic/Data/groove_encoded'
+base_directory = '/home/ckirst/Media/Music/AImedia/MLMusic/Results/aid'
+
+
+midi, tokens, primer, full_primer, probs, model = \
+       generate(continue_model = 'best_acc',
+                primer = 500, 
+                max_primer_tokens = 50,                
+                max_sequence_length = 150,
+                
+                return_midi = True,
+                return_tokens = True,
+                return_primer = True,
+                return_full_primer = True,
+                return_probabilities = True,
+                return_model = True,
+                
+                base_directory = base_directory,
+                data_directory = data_directory,
+                 
+                save_midi = True,
+                save_primer = True,
+                
+                plot_primer = True,
+                plot = True,
+                
+                verbose = True
+                );
+
+
+#%%
+
+from aid.dataset.midi_utils import plot, play
+
+plot(primer)
+plot(midi)
+plot(full_primer)
+
+
+#%%
+
+play(midi)
+
+
+#%% plot the probabilities 
+
+#%%
+
+from aid.model.run import load_model
+
+model = load_model(source='best_acc', base_directory=base_directory)
+
+#%%
+
+
+
+
+#%%
+
+from aid.model.run import create_data
 

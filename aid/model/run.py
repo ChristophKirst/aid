@@ -15,6 +15,7 @@ __copyright__ = 'Copyright © 2022 by Christoph Kirst'
 import time
 import os
 import csv
+import pickle
 
 import torch
 import torch.nn
@@ -286,9 +287,9 @@ results_best_file_name   = 'best_epochs.csv'
 tensorboard_directory    = 'tensorboard'
 
 generate_directory        = 'generate'
-generate_midi_file_name   = 'generated_%d_%d.mid'  # primer, n_primer
-generate_token_file_name  = 'generated_%d_%d.npy'  # primer, n_primer
-generate_primer_file_name = 'primer_%d_%d.npy'
+generate_midi_file_name   = 'generated_%r_%d.mid'  # primer, n_primer
+generate_token_file_name  = 'generated_%r_%d.pickle'  # primer, n_primer
+generate_primer_file_name = 'primer_%r_%d.mid'  # primer, n_primer
 
 
 def directory_default(base_directory = None, directory = None, sub_directory = None, create = False, absolute = True):
@@ -385,19 +386,19 @@ def train(
         epochs,  
         
         model = None,
-        model_parameter = dict(),
+        model_parameter = None,
         
         optimizer = None,
-        optimizer_parameter = dict(),  
+        optimizer_parameter = None,  
     
         loss = None,       
-        loss_parameter = dict(),
+        loss_parameter = None,
         
         data_train = None,
         data_eval_train = None,
         data_eval_test  = None,
         data_directory = None,
-        data_parameter = dict(),
+        data_parameter = None,
          
         ### continue 
         continue_epoch = None,
@@ -466,25 +467,34 @@ def train(
       from torch.utils.tensorboard import SummaryWriter
       tensorboard_summary = SummaryWriter(log_dir=directory_tensorboard)
     
-    ### device @@@
+    ### device ###
     if device is None:
         device = get_device();
     if verbose:
         print('train: using %r' % device);
     
     ### model and data ###
+    if data_parameter is None:
+        data_parameter = dict();
     if data_train is None:
        data_train, _ =  create_data(directory=data_directory, **data_parameter);
     if data_eval_train is None or data_eval_test is None:
        data_parameter.update(shuffle=False)
        data_eval_train, data_eval_test = create_data(directory=data_directory, **data_parameter);
     
+    
+    if model_parameter is None:
+        model_parameter = dict();
     if model is None:
        model = create_model(device=device,**model_parameter)
     
+    if optimizer_parameter is None:
+        optimizer_parameter = dict();
     if optimizer is None:
        optimizer = create_optimizer(model=model, **optimizer_parameter)
-    
+     
+    if loss_parameter is None:
+        loss_parameter = dict();
     if loss is None:
         loss = create_loss(device=device, **loss_parameter);
     
@@ -579,7 +589,7 @@ def train(
             tensorboard_summary.add_scalar("loss/train",          eval_train_loss,   global_step=epoch)     
             tensorboard_summary.add_scalar("loss/test",           eval_test_loss,    global_step=epoch)
             tensorboard_summary.add_scalar("accuracy/train",      eval_train_acc,    global_step=epoch)
-            tensorboard_summary.add_scalar("accuracy/eval",       eval_test_acc,     global_step=epoch)
+            tensorboard_summary.add_scalar("accuracy/test",       eval_test_acc,     global_step=epoch)
             tensorboard_summary.add_scalar("learning_rate/train", learning_rate,  global_step=epoch)
             tensorboard_summary.flush()
 
@@ -591,47 +601,45 @@ def train(
 
 
 
-def generate(
-        max_sequence_length = 512,
-        
-        primer = None,
-        max_primer_tokens = 10, 
-        generate_parameter = dict(),
-        
-        model = None,
-        model_parameter = dict(),
-        
-        continue_model = None,
-        continue_epoch = None,
-        
-        data = None,
-        data_directory = None,
-        data_parameter = dict(),
-               
-        plot_primer = False,
-        plot = False,
-        play = False,
-        
-        save_midi   = False,
-        save_tokens = False,
-        save_primer = False,
-        
-        return_midi = True,
-        return_tokens = False,
-        return_probabilities = False,
-        
-        directory      = None,
-        base_directory = None,
-        
-        verbose = False
+def generate(max_sequence_length = 512,
+            primer = None,
+            max_primer_tokens = 10, 
+            generate_parameter = None,
+            
+            model = None,
+            model_parameter = None,
+            
+            continue_model = None,
+            continue_epoch = None,
+            
+            data = None,
+            data_directory = None,
+            data_parameter = None,
+                   
+            plot_primer = False,
+            plot = False,
+            play = False,
+            
+            save_midi   = False,
+            save_tokens = False,
+            save_primer = False,
+            
+            return_midi = True,
+            return_tokens = False,
+            return_primer = False,
+            return_full_primer = False,
+            return_probabilities = False,
+            return_model = False,
+            
+            directory      = None,
+            base_directory = None,
+            
+            verbose = False
     ):
     
-    if save_midi or save_tokens or save_primer:
-        directory_generate = directory_default(base_directory=base_directory, directory=directory, sub_directory=generate_directory, create=True);
-        if verbose:
-            print('generate: directory: %s' % directory_generate);
-    
     # model 
+    if model_parameter is None:
+        model_parameter = dict();
     if model is None:
        model = create_model(**model_parameter)
     if continue_model is not None:
@@ -641,45 +649,81 @@ def generate(
     model.eval()
     
     # primer
-    primer_save = primer;
+    if data_parameter is None:
+        data_parameter = dict();
+        
     if primer is None or isinstance(primer, int):
         if data is None:
-          data, _ =  create_data(directory=data_directory, **data_parameter); 
+          data, _ =  create_data(directory=data_directory, batch_size=1, **data_parameter); 
         if primer is None:
             import numpy as np
             primer = np.rand.randrange(0,len(data));
-        primer_save = primer;
-        primer = data[primer].src
-        n_primer_tokens = np.where(primer == TOKEN_PAD)[0];
+        primer_label = primer;
+        primer = data[primer].src[0]
+        if return_full_primer:
+            primer_full = primer;
+        n_primer_tokens = torch.where(primer == TOKEN_PAD)[0];
         if len(n_primer_tokens) > 0:
             primer = primer[:n_primer_tokens[0]];
     elif isinstance(primer, utils.pm.PrettyMIDI):
         primer = encoder.encode_midi(primer)
+        primer_label = 'custom';
     
     n_primer_tokens = min(len(primer), max_primer_tokens);
-    primer = primer[:n_primer_tokens];     
-
-    if save_primer is not None:
-        if not isinstance(save_primer, str):
-            primer_midi_file = generate_primer_file_name % (primer_save, n_primer_tokens);
-        midi = encoder.decode_midi(primer);
-        midi.write(os.path.join(directory_generate, primer_midi_file))
-        
+    primer = primer[:n_primer_tokens];   
+    
     if plot_primer:
         utils.plot(primer);
+
+    # saving
+    if save_midi or save_tokens or save_primer:
+        directory_generate = directory_default(base_directory=base_directory, directory=directory, sub_directory=generate_directory, create=True);
+        if verbose:
+            print('generate: directory: %s' % directory_generate);
+                
+    if save_primer:
+        if not isinstance(save_primer, str):
+            save_primer = generate_primer_file_name % (primer_label, n_primer_tokens);
+            save_primer = os.path.join(directory_generate, save_primer)
+        midi = encoder.decode_midi(primer);
+        if verbose:
+            print('generate: saving primer to %r' % save_primer)
+        midi.write(save_primer)
+
     
-    for k,v in zip(['max_sequence_length', 'end_token', 'pad_token'], [max_sequence_length, TOKEN_END, TOKEN_PAD]):
+    if generate_parameter is None:
+        generate_parameter = dict();
+    for k,v in zip(['max_sequence_length', 'end_token', 'ignore_token', 'verbose'], [max_sequence_length, TOKEN_END, TOKEN_PAD, verbose]):
        if k not in generate_parameter.keys():
            generate_parameter[k] = v;
     
     if return_probabilities:
         tokens, probabilities = model.generate(primer, return_probabilities=return_probabilities, **generate_parameter);
+        probabilities = probabilities.cpu().detach().numpy();
     else:
         tokens = model.generate(primer, **generate_parameter);
-    tokens = tokens[0].cpu().detach().numpy();
+    tokens = tokens.cpu().detach().numpy();
     
-    if return_midi or plot or play:
+    if return_midi or save_midi or plot or play:
         midi = encoder.decode_midi(tokens);
+    
+    if save_midi:
+        if not isinstance(save_midi, str):
+            save_midi = generate_midi_file_name % (primer_label, n_primer_tokens);
+            save_midi = os.path.join(directory_generate, save_midi)
+        if verbose:
+            print('generate: saving midi to %r' % save_midi)
+        midi.write(save_midi)
+        
+    if save_tokens:
+        if not isinstance(save_tokens, str):
+            save_tokens = generate_token_file_name % (primer_label, n_primer_tokens);
+            save_tokens = os.path.join(directory_generate, save_tokens)
+        if verbose:
+            print('generate: saving tokens to %r' % save_tokens)
+        o_stream = open(save_tokens, "wb")
+        pickle.dump(tokens, o_stream)
+        o_stream.close()
     
     if plot:
         utils.plot(midi);
@@ -691,8 +735,14 @@ def generate(
         result += (midi,)
     if return_tokens:
         result += (tokens,);
+    if return_primer:
+        result += (primer,);
+    if return_full_primer:
+        result += (primer_full,)
     if return_probabilities:
-        result += (probabilities[0],);
+        result += (probabilities,);
+    if return_model:
+        result += (model,)
     if len(result) == 1:
         result = result[0];
     return result;

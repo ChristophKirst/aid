@@ -421,7 +421,15 @@ class Transformer(nn.Module):
       
     @property
     def n_tokens(self):
-        return self.generator.linear.weight.shape[1];
+        return self.embedding.embedding.weight.shape[0];
+    
+    @property
+    def n_src_tokens(self):
+        return self.embedding.embedding.weight.shape[0];   
+    
+    @property
+    def n_tgt_tokens(self):
+        return self.generator.linear.weight.shape[0]; 
       
     @property
     def d_model(self):
@@ -451,7 +459,7 @@ class Transformer(nn.Module):
     def loss(self, src, tgt, mask = None):
         return self.criterion(self.forward(src, mask=mask), tgt);
     
-    def generate(self, primer = None, max_sequence_length = 1024, method = 'random', verbose = True, 
+    def generate(self, primer = None, tgt_sequence_length = 1024, max_sequence_length = None, method = 'random', verbose = True, 
                        start_token = 1, end_token = None, ignore_token = None, n_tokens = None,
                        dtype = torch.long, softmax = True, beam_search = 4, return_probabilities = False):
         """Generate sequence from optional primer.
@@ -467,14 +475,17 @@ class Transformer(nn.Module):
             verbose = 10;
         
         if verbose:
-            print("Generating sequence via method=%s of max length-%d%", (method, max_sequence_length))
+            print("generating sequence via method=%s of max_sequence_length=%d" % (method, max_sequence_length))
 
         device = self.device();
         
         if n_tokens is None:
-            n_tokens = self.n_tokens();
+            n_tokens = self.n_tokens;
 
-        sequence = torch.full((1,max_sequence_length), ignore_token, dtype=dtype, device=device)
+        sequence = torch.full((1,tgt_sequence_length), ignore_token, dtype=dtype, device=device)
+
+        if max_sequence_length is None:
+            max_sequence_length = tgt_sequence_length;
 
         if primer is not None:
            n_primer = len(primer)
@@ -492,8 +503,10 @@ class Transformer(nn.Module):
         
         # generation loop
         s = n_primer
-        while(s < max_sequence_length):
-            y = self.forward(sequence[..., :s]);
+        while(s < tgt_sequence_length):
+            
+            s0 = max(0, max_sequence_length - s);
+            y = self.forward(sequence[..., s0:s]);
             if n_tokens is not None:
                 y = y[..., :n_tokens]
             if softmax:
@@ -513,12 +526,12 @@ class Transformer(nn.Module):
                 sequence[:, s] = next_token;
                 
             elif method == 'beam':
-                n_vocab = prob_tokens.size(-1);
+                n_tokens = prob_tokens.size(-1);
                 prob_tokens = prob_tokens.flatten()
                 top_res, top_idx = torch.topk(prob_tokens, beam_search)
 
-                beam_rows = top_idx // n_vocab
-                beam_cols = top_idx % n_vocab
+                beam_rows = top_idx // n_tokens
+                beam_cols = top_idx % n_tokens
 
                 sequence = sequence[beam_rows, :]
                 sequence[..., s] = beam_cols

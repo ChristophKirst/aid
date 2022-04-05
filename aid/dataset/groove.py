@@ -14,6 +14,7 @@ import os
 import natsort
 import pickle
 import random
+import itertools
 import torch
 from torch.utils.data import Dataset, DataLoader
 
@@ -66,6 +67,20 @@ class GrooveDataset(Dataset):
     
     def __repr__(self):
         return "GrooveDataset[%d]" % (self.__len__());
+
+
+class GrooveDataLoader(DataLoader):
+    def __init__(self, data, **kwargs):
+        if 'collate_fn' not in kwargs.keys():
+            kwargs.update(collate_fn=collate_batch);
+        super(GrooveDataLoader, self).__init__(data, **kwargs)
+
+    def __getitem__(self, idx):
+        """Returns input and target sequence"""
+        return next(itertools.islice(self, idx, None)); 
+    
+    def __repr__(self):
+        return "GrooveDataloader[%d]" % (self.__len__());
 
 
 def generate_source_target(sequence, max_sequence_length = None, random_sequence_start = None, sequence_offset = 0, ignore_token = TOKEN_PAD):
@@ -146,9 +161,9 @@ def train_validate_test_datasets(directory, max_sequence_length = None, random_s
     return dataset_train, dataset_validate, dataset_test
 
 
-def train_test_datasets(directory, max_length = None, random_sequence_start = None):
+def train_test_datasets(directory, max_sequence_length = None, random_sequence_start = None):
     """Create datasets for training"""
-    dataset_train, _, dataset_test =  train_validate_test_datasets(directory=directory, max_length=max_length, random_sequence_start=random_sequence_start)
+    dataset_train, _, dataset_test =  train_validate_test_datasets(directory=directory, max_sequence_length=max_sequence_length, random_sequence_start=random_sequence_start)
     return dataset_train, dataset_test
 
 
@@ -156,9 +171,9 @@ def train_validate_test_dataloaders(directory, max_sequence_length = None, rando
     """Create data loders for training"""
     dataset_train, dataset_validate, dataset_test = train_validate_test_datasets(directory=directory, max_sequence_length=max_sequence_length, random_sequence_start=random_sequence_start);
      
-    loader_train   = DataLoader(dataset_train,     batch_size=batch_size, shuffle=shuffle, collate_fn=collate_batch, **kwargs)
-    loder_validate = DataLoader(dataset_train,     batch_size=batch_size, shuffle=False,   collate_fn=collate_batch, **kwargs)
-    loader_test    = DataLoader(dataset_validate,  batch_size=batch_size, shuffle=False,   collate_fn=collate_batch, **kwargs)
+    loader_train   = GrooveDataLoader(dataset_train,     batch_size=batch_size, shuffle=shuffle, collate_fn=collate_batch, **kwargs)
+    loder_validate = GrooveDataLoader(dataset_train,     batch_size=batch_size, shuffle=False,   collate_fn=collate_batch, **kwargs)
+    loader_test    = GrooveDataLoader(dataset_validate,  batch_size=batch_size, shuffle=False,   collate_fn=collate_batch, **kwargs)
 
     return loader_train, loder_validate, loader_test
 
@@ -278,6 +293,8 @@ def file_info(filename):
     index, style, beat, time_signature,  = name.split('_');
     time_signature = time_signature.split('.')[0];
     return drummer, session, index, style, beat, time_signature;
+
+
 
 
 
