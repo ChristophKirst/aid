@@ -590,8 +590,8 @@ class Transformer(nn.Module):
                max_relative_position = True, 
                add_relative_position_to_value = False, 
                mask_future = True,
-               save_attention = False,
-               save_srel = False):
+               save_attention = False
+               ):
         """Construct Transformer model from hyperparameters."""
         if n_tokens is not None:
             n_src_tokens = n_tgt_tokens = n_tokens;
@@ -610,8 +610,8 @@ class Transformer(nn.Module):
                                            add_relative_position_to_value=add_relative_position_to_value, 
                                            dropout=dropout_attention, 
                                            mask_future=mask_future, 
-                                           save_attention=save_attention, 
-                                           save_srel=save_srel)
+                                           save_attention=save_attention
+                                          )
         
         feedforward = FeedForward(d_model, d_feedforward, dropout=dropout)
         
