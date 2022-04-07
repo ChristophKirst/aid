@@ -33,8 +33,6 @@ import torch.nn.functional as F
 
 from torch import Tensor
 from torch.nn.parameter import Parameter
-from torch.autograd import Variable
-#from torch.nn.modules.normalization import LayerNorm
 
 
 def clone(module, n):
@@ -77,12 +75,15 @@ LayerNorm = nn.LayerNorm
   
 class MultiHeadedAttention(nn.Module):
     """Multi head attention network with optional relative position representation."""
-    def __init__(self, d_model, n_heads, max_relative_position = None, add_relative_position_to_value = False, dropout = 0.1, mask_future = True):
+    def __init__(self, d_model, n_heads,
+                 max_relative_position = None, 
+                 add_relative_position_to_value = False, 
+                 dropout = 0.1, 
+                 mask_future = True, 
+                 save_attention = False):
         super(MultiHeadedAttention, self).__init__()
         if (d_model % n_heads != 0):
             raise ValueError('Model dimension d_model=%d must be divisible by the number of attention heads n_heads=%d!' % (d_model, n_heads))
-
-        self.mask_future = mask_future;
 
         self.d_head = d_model // n_heads
         self.n_heads = n_heads
@@ -99,8 +100,8 @@ class MultiHeadedAttention(nn.Module):
         if max_relative_position is not None:
             self.max_relative_position = max_relative_position
             if self.mask_future:
-               self.relative_position = Parameter(torch.rand((max_relative_position, self.d_head), dtype=torch.float32))
-               self.register_buffer("mask_relative_position", self.future_mask(max_relative_position))
+               self.relative_position = Parameter(torch.rand((max_relative_position, self.d_head), dtype=torch.float32))               
+               #self.mask_relative_position = self.future_mask(max_relative_position)
             else:
                self.relative_position = Parameter(torch.rand((2*(max_relative_position - 1) + 1, self.d_head), dtype=torch.float32))
                 
@@ -117,8 +118,10 @@ class MultiHeadedAttention(nn.Module):
             self.value_relative_position = None
 
         #storage for visualization etc.
+        self.save_attention = save_attention;
+        #self.save_srel = save_srel;
         self.attention = None
-        self.srel = None;
+        #self.srel = None;
     
     
     def forward(self, query, key, value, mask = None):
@@ -131,10 +134,10 @@ class MultiHeadedAttention(nn.Module):
         
         # masking
         if self.mask_future is True:
-            if self.relative_position is not None and seq_len <= self.max_relative_position:
-                mask_future = self.mask_relative_position[:,:,:seq_len, :seq_len]; 
-            else:
-                mask_future = self.future_mask(seq_len);
+            #if self.relative_position is not None and seq_len <= self.max_relative_position:
+            #    mask_future = self.mask_relative_position[:,:,:seq_len, :seq_len]; 
+            #else:
+            mask_future = self.future_mask(seq_len);
         else:
             mask_future = None;
         
@@ -188,21 +191,25 @@ class MultiHeadedAttention(nn.Module):
                 qe = qe.flip(-1)
                 qe = F.pad(qe, (1,0)) 
                 qe = torch.reshape(qe.contiguous(), (n_batch, n_heads, seq_len+1, seq_len))
-                srel = qe[:, :, 1:, :]
+                #srel = qe[:, :, 1:, :]
                 #srel.shape = (n_batch, n_heads, seq_len, seq_len)
+                attn += qe[:, :, 1:, :];
             else:
                 # reslice to get srel (assumes row mayor ordering)
                 qe = qe.contiguous().reshape(n_batch, n_heads, -1)
                 qe = qe[:,:,seq_len-1:seq_len*(2*seq_len-2)+seq_len-1];
                 qe = qe.reshape(n_batch, n_heads,seq_len,2*seq_len-2);
-                srel = qe[...,:seq_len];
+                #srel = qe[...,:seq_len];
                 #srel.shape = (n_batch, n_heads, seq_len, seq_len)
+                attn += qe[...,:seq_len]
 
             #save srel
-            self.srel = srel;
+            #if self.save_srel:
+            #    self.srel = srel;
     
             #add relative position encoding to attention score
-            attn += srel
+            #attn += srel
+            #srel = None;  # free some memory
                 
         # attention
         attn /= math.sqrt(d_head)     
@@ -217,7 +224,8 @@ class MultiHeadedAttention(nn.Module):
         # (seq_len, seq_lem ) = (query index = output sequence position, key index = attended positoin in input sequence))
         
         #save attention
-        self.attention = attn;
+        if self.save_attention:
+            self.attention = attn;
         
         # value
         z = torch.matmul(attn, value) 
@@ -263,7 +271,7 @@ class MultiHeadedAttention(nn.Module):
     
     def future_mask(self, size):
         """Mask to not attend to future positions in sequence."""
-        return torch.triu(torch.ones(size, size, dtype=torch.bool, device=self.device()), diagonal=1).unsqueeze(0).unsqueeze(0);
+        return torch.triu(torch.ones(size, size, dtype=torch.bool, device=self.device(), requires_grad = False), diagonal=1).unsqueeze(0).unsqueeze(0);
 
     def relative_position_representation(self, seq_len, relative_position):
         """Clip/pad the relative positional embedding to fit sequence."""
@@ -323,7 +331,7 @@ class PositionalEncoding(nn.Module):
         else:
             self.dropout = None;
         
-        pe = torch.zeros(max_sequence, d_model)
+        pe = torch.zeros(max_sequence, d_model, requires_grad = False)
         position = torch.arange(0, max_sequence).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2) *
                              -(np.log(10000.0) / d_model))
@@ -333,8 +341,7 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pe', pe)
         
     def forward(self, x):
-        x = x + Variable(self.pe[:, :x.size(1)], 
-                         requires_grad=False)
+        x = x + self.pe[:, :x.size(1)]
         if self.dropout:
             x = self.dropout(x)
         return x;
@@ -459,7 +466,7 @@ class Transformer(nn.Module):
     def loss(self, src, tgt, mask = None):
         return self.criterion(self.forward(src, mask=mask), tgt);
     
-    def generate(self, primer = None, tgt_sequence_length = 1024, max_sequence_length = None, method = 'random', verbose = True, 
+    def generate(self, primer = None, sequence_length = 1024, model_sequence_length = None, method = 'random', verbose = True, 
                        start_token = 1, end_token = None, ignore_token = None, n_tokens = None,
                        dtype = torch.long, softmax = True, beam_search = 4, return_probabilities = False):
         """Generate sequence from optional primer.
@@ -475,17 +482,17 @@ class Transformer(nn.Module):
             verbose = 10;
         
         if verbose:
-            print("generating sequence via method=%s of max_sequence_length=%d" % (method, max_sequence_length))
+            print("generating sequence via method=%s of max_sequence_length=%d" % (method, sequence_length))
 
         device = self.device();
         
         if n_tokens is None:
             n_tokens = self.n_tokens;
 
-        sequence = torch.full((1,tgt_sequence_length), ignore_token, dtype=dtype, device=device)
+        sequence = torch.full((1, sequence_length), ignore_token, dtype=dtype, device=device)
 
-        if max_sequence_length is None:
-            max_sequence_length = tgt_sequence_length;
+        if model_sequence_length is None:
+            model_sequence_length = sequence_length;
 
         if primer is not None:
            n_primer = len(primer)
@@ -495,7 +502,7 @@ class Transformer(nn.Module):
            sequence[..., :1] = start_token;
            
         if return_probabilities:
-            probs = torch.full((1,max_sequence_length, n_tokens), 0, dtype=torch.float, device=device)
+            probs = torch.full((1, sequence_length, n_tokens), 0, dtype=torch.float, device=device)
             probs[0,torch.arange(n_primer),sequence[..., :n_primer]] = 1;  
         
         if softmax is True:
@@ -503,15 +510,15 @@ class Transformer(nn.Module):
         
         # generation loop
         s = n_primer
-        while(s < tgt_sequence_length):
-            
-            s0 = max(0, max_sequence_length - s);
+        while(s < sequence_length):
+            s0 = max(0, s - model_sequence_length);
             y = self.forward(sequence[..., s0:s]);
+            
             if n_tokens is not None:
                 y = y[..., :n_tokens]
             if softmax:
                 y = softmax(y);
-            prob_tokens = y[:, s-1, :]
+            prob_tokens = y[:, -1, :]
             
             if return_probabilities: # shifted by one as forward shifts everyhting by one
                 probs[:,s,:] = prob_tokens;
@@ -546,12 +553,12 @@ class Transformer(nn.Module):
 
             if end_token is not None and (next_token == end_token):
                 if verbose:
-                    print("Model called end of sequence at:", s, "/", max_sequence_length)
+                    print("Model called end of sequence at:", s, "/", sequence_length)
                 break
 
             s += 1
             if verbose and (s % verbose == 0):
-                print(s, "/", max_sequence_length)
+                print(s, "/", sequence_length)
 
         sequence = sequence[:, :s];
         if return_probabilities:
@@ -581,7 +588,10 @@ class Transformer(nn.Module):
                dropout=0.1, 
                dropout_attention = None, 
                max_relative_position = True, 
-               add_relative_position_to_value = False):
+               add_relative_position_to_value = False, 
+               mask_future = True,
+               save_attention = False,
+               save_srel = False):
         """Construct Transformer model from hyperparameters."""
         if n_tokens is not None:
             n_src_tokens = n_tgt_tokens = n_tokens;
@@ -595,7 +605,14 @@ class Transformer(nn.Module):
             position  = PositionalEncoding(d_model, dropout)
             embedding = nn.Sequential(Embedding(n_src_tokens, d_model), position)
         
-        attention   = MultiHeadedAttention(d_model=d_model, n_heads=n_heads, max_relative_position=max_relative_position, add_relative_position_to_value=add_relative_position_to_value, dropout=dropout_attention)
+        attention   = MultiHeadedAttention(d_model=d_model, n_heads=n_heads, 
+                                           max_relative_position=max_relative_position, 
+                                           add_relative_position_to_value=add_relative_position_to_value, 
+                                           dropout=dropout_attention, 
+                                           mask_future=mask_future, 
+                                           save_attention=save_attention, 
+                                           save_srel=save_srel)
+        
         feedforward = FeedForward(d_model, d_feedforward, dropout=dropout)
         
         encoder = Encoder(EncoderLayer(d_model, attention, feedforward, dropout), n_layers)

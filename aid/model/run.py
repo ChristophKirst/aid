@@ -601,7 +601,9 @@ def train(
 
 
 
-def generate(max_sequence_length = 512,
+def generate(
+            sequence_length = 1024,
+            model_sequence_length = 512,
             primer = None,
             max_primer_tokens = 10, 
             generate_parameter = None,
@@ -693,15 +695,17 @@ def generate(max_sequence_length = 512,
     
     if generate_parameter is None:
         generate_parameter = dict();
-    for k,v in zip(['max_sequence_length', 'end_token', 'ignore_token', 'verbose'], [max_sequence_length, TOKEN_END, TOKEN_PAD, verbose]):
+    for k,v in zip(['sequence_length', 'model_sequence_length', 'end_token', 'ignore_token', 'verbose'],
+                    [sequence_length,   model_sequence_length,   TOKEN_END,   TOKEN_PAD,      verbose]):
        if k not in generate_parameter.keys():
            generate_parameter[k] = v;
     
-    if return_probabilities:
-        tokens, probabilities = model.generate(primer, return_probabilities=return_probabilities, **generate_parameter);
-        probabilities = probabilities.cpu().detach().numpy();
-    else:
-        tokens = model.generate(primer, **generate_parameter);
+    with torch.no_grad():
+        if return_probabilities:
+            tokens, probabilities = model.generate(primer, return_probabilities=return_probabilities, **generate_parameter);
+            probabilities = probabilities.cpu().detach().numpy();
+        else:
+            tokens = model.generate(primer, **generate_parameter);
     tokens = tokens.cpu().detach().numpy();
     
     if return_midi or save_midi or plot or play:

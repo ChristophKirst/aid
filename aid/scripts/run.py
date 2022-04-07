@@ -136,9 +136,12 @@ base_directory = '/home/ckirst/Media/Music/AImedia/MLMusic/Results/aid'
 
 midi, tokens, primer, full_primer, probs, model = \
        generate(continue_model = 'best_acc',
-                primer = 500, 
-                max_primer_tokens = 50,                
-                max_sequence_length = 150,
+                primer = 501, 
+                max_primer_tokens = 50,  
+                sequence_length = 1024,
+                model_sequence_length = 200,
+                
+                model_parameter = dict(save_attention = False, mask_future = True),
                 
                 return_midi = True,
                 return_tokens = True,
@@ -153,8 +156,8 @@ midi, tokens, primer, full_primer, probs, model = \
                 save_midi = True,
                 save_primer = True,
                 
-                plot_primer = True,
-                plot = True,
+                plot_primer = False,
+                plot = False,
                 
                 verbose = True
                 );
@@ -163,7 +166,13 @@ midi, tokens, primer, full_primer, probs, model = \
 #%%
 
 from aid.dataset.midi_utils import plot, play
+play(midi)
 
+
+#%%
+
+play(full_primer)
+#%%
 plot(primer)
 plot(midi)
 plot(full_primer)
@@ -173,21 +182,122 @@ plot(full_primer)
 
 play(midi)
 
+#%%
+
+play(primer)
 
 #%% plot the probabilities 
 
 #%%
 
 from aid.model.run import load_model
-
+base_directory = '/home/ckirst/Media/Music/AImedia/MLMusic/Results/aid'
 model = load_model(source='best_acc', base_directory=base_directory)
 
 #%%
 
+import gc
+gc.get_objects()
 
 
+#%%
+import numpy as np
+import torch
+import gc
 
+def check_memory(verbose = False):
+    n_objects = 0;
+    total_size = 0;
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                if verbose:
+                    if hasattr(obj, 'name') and obj.name is not None:
+                        print(obj.name)
+                    print(type(obj), obj.size())
+                n_objects += 1;
+                total_size += np.prod(obj.size())
+        except:
+            pass
+    
+    print('number of objects: %d of total size %d' % (n_objects, total_size))
+
+
+check_memory()
 #%%
 
 from aid.model.run import create_data
 
+from aid.model.run import create_model
+
+
+from aid.model.run import load_model, create_data
+data_directory = '/home/ckirst/Media/Music/AImedia/MLMusic/Data/groove_encoded'
+base_directory = '/home/ckirst/Media/Music/AImedia/MLMusic/Results/aid'
+
+model = load_model(base_directory=base_directory, source='best_acc')
+
+data, _ = create_data(directory=data_directory)
+
+primer = data[500].src[:,:20];
+
+
+#%%
+
+y = model(primer)
+
+
+
+#%% convert state dicts to newer versions
+
+import torch
+
+from aid.model.run import file_name_model
+fn = file_name_model(base_directory = '/home/ckirst/Media/Music/AImedia/MLMusic/Results/aid', source='best_acc')
+state_dict = torch.load(fn, map_location=torch.device('cpu'))
+
+from collections import OrderedDict as odict
+def filter_state_dict(state_dict, remove = None, keep = None):
+    if remove is None: 
+        remove = [];
+    if isinstance(remove,str):
+        remove = [remove];  
+    
+    if isinstance(keep,str):
+        keep = [keep];  
+        
+    new_state_dict = odict();
+        
+    
+    for k,v in state_dict.items():
+        skip = False;
+        for r in remove:
+            if r in k:
+                skip = True; 
+                break;
+        if skip:
+            continue;
+        
+        if keep is None:
+            new_state_dict[k] = v;
+        else:
+            for l in keep:
+                if l in k:
+                    new_state_dict[k] = v;
+                    break;
+
+    return new_state_dict;
+    
+
+new_state_dict = filter_state_dict(state_dict, remove='mask_relative_position')
+
+#%%
+
+from aid.model.run import create_model
+model = create_model();
+model.load_state_dict(new_state_dict)
+
+#%% 
+
+from aid.model.run import save_model
+save_model(model, base_directory = '/home/ckirst/Media/Music/AImedia/MLMusic/Results/aid', sink='best_acc' )

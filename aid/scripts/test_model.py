@@ -131,7 +131,7 @@ model, optimizer, loss = train( epochs = 25,
                                 data_train=data, n_train_batches = 32,
                                 data_eval_train=data_eval, data_eval_test=data_eval, n_evaluate_test_batches = 5, n_evaluate_train_batches = 0,
                                 use_tensorboard = True,
-                                base_directory = '~/Desktop/test'
+                                base_directory = '/home/ckirst/Desktop/test'
                               );
 
 
@@ -174,7 +174,7 @@ model, optimizer, loss = train( epochs = 50,
                                 data_train=data, n_train_batches = 32,
                                 data_eval_train=data_eval, data_eval_test=data_eval, n_evaluate_test_batches = 5, n_evaluate_train_batches = 0,
                                 use_tensorboard = True,
-                                base_directory = '~/Desktop/test'
+                                base_directory = '/home/ckirst/Desktop/test'
                               );
 
 #%% check forward
