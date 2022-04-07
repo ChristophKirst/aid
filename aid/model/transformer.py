@@ -97,6 +97,8 @@ class MultiHeadedAttention(nn.Module):
         else:
             self.dropout = None;
 
+        self.mask_future = mask_future;
+
         if max_relative_position is not None:
             self.max_relative_position = max_relative_position
             if self.mask_future:
@@ -610,8 +612,7 @@ class Transformer(nn.Module):
                                            add_relative_position_to_value=add_relative_position_to_value, 
                                            dropout=dropout_attention, 
                                            mask_future=mask_future, 
-                                           save_attention=save_attention
-                                          )
+                                           save_attention=save_attention)
         
         feedforward = FeedForward(d_model, d_feedforward, dropout=dropout)
         

@@ -53,6 +53,28 @@ from aid.model.run import train
 directory_data = '/home/ckirst/Media/Music/AImedia/MLMusic/Data/groove_encoded'
 directory_base = '/home/ckirst/Media/Music/AImedia/MLMusic/Results/aid'
 
+
+model, optimizer, loss = train(
+      epochs=2,
+      n_train_batches = 2,
+      n_evaluate_train_batches  = 0,
+      n_evaluate_test_batches   = 1,
+      
+      model_parameter = dict(multi_gpu=True),
+      
+      data_parameter = dict(batch_size=4, max_sequence_length=32),
+      
+      optimizer_parameter = dict(factor = 0.75, warmup = 4000),
+      
+      base_directory=directory_base,
+      data_directory=directory_data,
+      
+      save = 1,
+      
+      clean_directories = True
+     )
+
+
 #%%
 from aid.model.run import train;
 
